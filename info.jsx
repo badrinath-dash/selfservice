@@ -1,4 +1,5 @@
 import * as React from "react";
+import Box from '@splunk/react-ui/Box';
 import Typography from '@splunk/react-ui/Typography';
 import DL, { Term as DT, Description as DD } from '@splunk/react-ui/DefinitionList';
 
@@ -17,26 +18,28 @@ const products = [
 
 export default function Info({ totalPrice }) {
   return (
-    <DL>
-      <Typography variant="title2">Total</Typography>
-      <Typography variant="title4">{totalPrice}</Typography>
-      
-        {products.map(product => (
+    <Box style={{ padding: '16px 0' }}>
+      <Typography variant="title2" style={{ marginBottom: '4px' }}>
+        Total
+      </Typography>
+      <Typography variant="title3" style={{ marginBottom: '16px' }}>
+        {totalPrice}
+      </Typography>
+
+      <DL>
+        {products.map((product) => (
           <React.Fragment key={product.name}>
             <DT>
-              <Typography variant="title2">
-                {product.name} 
-                {/* {product.desc} */}
+              <Typography variant="body" weight="semibold">
+                {product.name}
               </Typography>
             </DT>
             <DD>
-              <Typography variant="title1" size={16}>
-                {product.price}
-              </Typography>
+              <Typography variant="body">{product.price}</Typography>
             </DD>
           </React.Fragment>
         ))}
-      
-    </DL>
+      </DL>
+    </Box>
   );
 }
