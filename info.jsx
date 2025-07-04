@@ -1,45 +1,68 @@
-import * as React from "react";
-import Box from '@splunk/react-ui/Box';
+import * as React from "react"
+import List from "@mui/material/List"
+import ListItem from "@mui/material/ListItem"
+import ListItemText from "@mui/material/ListItemText"
 import Typography from '@splunk/react-ui/Typography';
-import DL, { Term as DT, Description as DD } from '@splunk/react-ui/DefinitionList';
+import DefinitionList, { Term, Description } from '@splunk/react-ui/DefinitionList';
 
 const products = [
   {
-    name: "SPLUNK API Access",
-    desc: "Estimated Total Cost",
+    name: "Selected Service",
+    desc: "SPLUNK API Access to Platform",
     price: "$15.00"
   },
   {
-    name: "Hardware Cost",
-    desc: "Number of CPU Cores used",
+    name: "Dedicated support",
+    desc: "Included in the Professional plan",
     price: "Free"
+  },
+  {
+    name: "Hardware Cost",
+    desc: "Devices needed for development",
+    price: "$69.99"
+  },
+  {
+    name: "Computing Cost",
+    desc: "License",
+    price: "$49.99"
+  },
+  {
+    name: "Total Estimated Cost",
+    desc: "Total Cost",
+    price: "$15049.99"
   }
-];
+]
 
 export default function Info({ totalPrice }) {
   return (
-    <Box style={{ padding: '16px 0' }}>
-      <Typography variant="title2" style={{ marginBottom: '4px' }}>
-        Total
-      </Typography>
-      <Typography variant="title3" style={{ marginBottom: '16px' }}>
-        {totalPrice}
-      </Typography>
+    <React.Fragment>
 
-      <DL>
-        {products.map((product) => (
-          <React.Fragment key={product.name}>
-            <DT>
-              <Typography variant="body" weight="semibold">
-                {product.name}
-              </Typography>
-            </DT>
-            <DD>
-              <Typography variant="body">{product.price}</Typography>
-            </DD>
-          </React.Fragment>
+      <DefinitionList disablePadding>
+        {products.map(product => (
+          <ListItem key={product.name} sx={{ py: 1, px: 0 }}>
+            <ListItemText
+              sx={{ mr: 2 }}
+
+              primary={
+                <Typography sx={{ color: 'white', size:'24', weight:"bold",lineHeight:'1.47'}}>
+                  {product.name}
+                </Typography>
+              }
+
+              secondary={
+                <Typography sx={{ color: 'active', size: 34, fontWeight: 'medium' }}>
+                  {product.desc}
+                </Typography>
+              }
+            />
+            <Typography variant="body" weight="bold" size="1.5rem">
+              {product.price}
+            </Typography>
+          </ListItem>
         ))}
-      </DL>
-    </Box>
-  );
+      </DefinitionList>
+
+
+    </React.Fragment>
+  )
 }
