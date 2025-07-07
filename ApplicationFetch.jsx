@@ -1,14 +1,7 @@
 import { useRef, useCallback } from "react";
 import { makeCancelable } from "@splunk/ui-utils/promise";
+import { fetchApplicationDetails } from './yourApiFile'; // import the Promise-based API
 
-// Modify this to your actual API
-const API_URL = "https://jsonplaceholder.typicode.com/users";
-
-/**
- * @param fetchTimeout: number - delay for fetch (ms)
- * @param fetchMoreTimeout: number - delay for fetchMore (ms)
- * @param numberOfResults: number - page size
- */
 export default function useFetchOptions({
   fetchTimeout = 600,
   fetchMoreTimeout = 200,
@@ -23,6 +16,7 @@ export default function useFetchOptions({
   const list = useRef([]);
   const timerRef = useRef(null);
   const fetchPromise = useRef(null);
+  const fullList = useRef([]); // store all apps once fetched
 
   const reset = useCallback(() => {
     firstIndex.current = 0;
@@ -31,20 +25,23 @@ export default function useFetchOptions({
     list.current = [];
   }, [numberOfResults]);
 
-  // Real API call and local filtering
-  const fetchDataFromAPI = async (filter = "") => {
-    const response = await fetch(API_URL);
-    const data = await response.json();
+  const fetchDataFromKVStore = async (filter = '') => {
+    // Fetch from KV store only once, cache in fullList
+    if (fullList.current.length === 0) {
+      fullList.current = await fetchApplicationDetails();
+    }
 
-    // Filter and slice data locally
-    const filtered = data.filter((item) =>
-      item.name.toLowerCase().startsWith(filter.toLowerCase())
-    );
+    const filtered = filter
+      ? fullList.current.filter(app =>
+          app.app_name?.toLowerCase().startsWith(filter.toLowerCase())
+        )
+      : fullList.current;
+
     const slice = filtered.slice(firstIndex.current, lastIndex.current);
 
     return slice.map((item) => ({
-      id: item.id,
-      title: item.name,
+      id: item._key,
+      title: item.app_name,
       matchRanges: filter ? [{ start: 0, end: filter.length }] : undefined
     }));
   };
@@ -67,13 +64,13 @@ export default function useFetchOptions({
         new Promise((resolve, reject) => {
           timerRef.current = setTimeout(async () => {
             try {
-              const options = await fetchDataFromAPI(filter);
+              const options = await fetchDataFromKVStore(filter);
               fetching.current = false;
               currentOptions.current = options;
               list.current = options;
               resolve(options);
-            } catch (e) {
-              reject(e);
+            } catch (err) {
+              reject(err);
             }
           }, currentFetch.current);
         })
@@ -110,7 +107,7 @@ export default function useFetchOptions({
   );
 
   const getCurrentCount = useCallback(() => list.current.length, []);
-  const getFullCount = useCallback(() => list.current.length, []);
+  const getFullCount = useCallback(() => fullList.current.length, []);
 
   return {
     fetch,
@@ -123,5 +120,3 @@ export default function useFetchOptions({
     getFullCount
   };
 }
-
-export const isMovieOption = (opt) => opt.matchRanges !== undefined;
