@@ -1,6 +1,8 @@
 import { useRef, useCallback } from "react";
 import { makeCancelable } from "@splunk/ui-utils/promise";
-import { fetchApplicationDetails } from './yourApiFile'; // import the Promise-based API
+import { searchKVStore } from "../../common/ManageKVStore";
+
+export const isApplicationOption = (app) => app.matchRanges != undefined;
 
 export default function useFetchOptions({
   fetchTimeout = 600,
@@ -25,6 +27,19 @@ export default function useFetchOptions({
     list.current = [];
   }, [numberOfResults]);
 
+  async function fetchApplicationDetails(){
+    const defaultErrorMsg="There is some error in data retrieval from SPLUNK KV Store, please try again"
+
+    return searchKVStore('ability_app_details_collection', '', '', defaultErrorMsg)
+    .then((response) => {
+        if (!response.ok){
+            throw new Error("No Application found"); 
+        }
+        return response.json();
+    });
+    
+
+  }
   const fetchDataFromKVStore = async (filter = '') => {
     // Fetch from KV store only once, cache in fullList
     if (fullList.current.length === 0) {
@@ -33,7 +48,7 @@ export default function useFetchOptions({
 
     const filtered = filter
       ? fullList.current.filter(app =>
-          app.app_name?.toLowerCase().startsWith(filter.toLowerCase())
+          app.related_app_name?.toLowerCase().startsWith(filter.toLowerCase())
         )
       : fullList.current;
 
@@ -41,7 +56,12 @@ export default function useFetchOptions({
 
     return slice.map((item) => ({
       id: item._key,
-      title: item.app_name,
+      title: item.related_app_name,
+      product_owner: item.product_owner,
+      group_owner: item.group_owner,
+      application_type: item.application_typem,
+      application_status: item.application_status,
+      e8_category:item.e8_category,
       matchRanges: filter ? [{ start: 0, end: filter.length }] : undefined
     }));
   };
