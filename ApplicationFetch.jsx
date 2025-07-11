@@ -28,20 +28,15 @@ export default function useFetchOptions({
   }, [numberOfResults]);
 
   async function fetchApplicationDetails(){
-    const defaultErrorMsg="There is some error in data retrieval from SPLUNK KV Store, please try again"
-
+    const defaultErrorMsg = "Error fetching data from SPLUNK KV Store.";
     return searchKVStore('ability_app_details_collection', '', '', defaultErrorMsg)
-    .then((response) => {
-        if (!response.ok){
-            throw new Error("No Application found"); 
-        }
+      .then((response) => {
+        if (!response.ok) throw new Error("No applications found");
         return response.json();
-    });
-    
-
+      });
   }
+
   const fetchDataFromKVStore = async (filter = '') => {
-    // Fetch from KV store only once, cache in fullList
     if (fullList.current.length === 0) {
       fullList.current = await fetchApplicationDetails();
     }
@@ -59,9 +54,9 @@ export default function useFetchOptions({
       title: item.related_app_name,
       product_owner: item.product_owner,
       group_owner: item.group_owner,
-      application_type: item.application_typem,
+      application_type: item.application_type,
       application_status: item.application_status,
-      e8_category:item.e8_category,
+      e8_category: item.e8_category,
       matchRanges: filter ? [{ start: 0, end: filter.length }] : undefined
     }));
   };
@@ -117,9 +112,32 @@ export default function useFetchOptions({
   }, []);
 
   const getOption = useCallback(
-    (value) => currentOptions.current.find((item) => item.id === value),
+    (id) =>
+      currentOptions.current.find((item) => item.id === id)
+      || fullList.current.find((item) => item._key === id) && {
+        id,
+        title: fullList.current.find((item) => item._key === id)?.related_app_name,
+        product_owner: fullList.current.find((item) => item._key === id)?.product_owner,
+      },
     []
   );
+
+  /** NEW: fetch specific app by id if it isn't yet loaded */
+  const fetchById = useCallback(async (id) => {
+    if (fullList.current.length === 0) {
+      fullList.current = await fetchApplicationDetails();
+    }
+    const app = fullList.current.find(item => item._key === id);
+    return app ? {
+      id: app._key,
+      title: app.related_app_name,
+      product_owner: app.product_owner,
+      group_owner: app.group_owner,
+      application_type: app.application_type,
+      application_status: app.application_status,
+      e8_category: app.e8_category
+    } : null;
+  }, []);
 
   const getSelectedOptions = useCallback(
     (values) => currentOptions.current.filter((item) => values.includes(item.id)),
@@ -135,6 +153,7 @@ export default function useFetchOptions({
     reset,
     stop,
     getOption,
+    fetchById,          // <== expose fetchById
     getSelectedOptions,
     getCurrentCount,
     getFullCount
