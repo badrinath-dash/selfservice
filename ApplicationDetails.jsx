@@ -1,73 +1,112 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import Grid from '@mui/material/Grid';
+import { styled } from '@mui/material/styles';
+import Button from '@splunk/react-ui/Button';
+
+import Text from '@splunk/react-ui/Text';
 import ControlGroup from '@splunk/react-ui/ControlGroup';
 import ColumnLayout from '@splunk/react-ui/ColumnLayout';
-import Text from '@splunk/react-ui/Text';
 import TextArea from '@splunk/react-ui/TextArea';
 import Select from '@splunk/react-ui/Select';
+import Typography from '@splunk/react-ui/Typography';
+import WaitSpinner from '@splunk/react-ui/WaitSpinner';
 import useFetchOptions, { isApplicationOption } from './ApplicationFetch';
-import getUserRoleDetails from '../../common/GetUserDetails';
+import getUserRoleDetails from '../../common/GetUserDetails'
 
-export default function ApplicationDetailsForm({ applicationFormData, setApplicationFormData, errors = {} }) {
+
+
+export default function ApplicationDetailsForm({ applicationFormData, setApplicationFormData }) {
+
   const [applicationOptions, setApplicationOptions] = useState([]);
+  const [fullCount, setFullCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const [selectedApp, setSelectedApp] = useState(null);
+
+  const [selectedValue, setSelectedValue] = useState('');
   const { fetch, getFullCount, getOption, stop } = useFetchOptions();
 
-  const handleFetch = useCallback((keyword = '') => {
-    setIsLoading(true);
-    fetch(keyword)
-      .then((newOptions) => {
-        setApplicationOptions(newOptions);
-        setIsLoading(false);
-      })
-      .catch((error) => {
-        if (!error.isCanceled) {
-          console.error('Fetch error:', error);
-          setIsLoading(false);
-        }
-      });
-  }, [fetch]);
 
+  // Replace with your real API
+
+  const handleFetch = useCallback(
+    (keyword = '') => {
+      setIsLoading(true);
+      fetch(keyword)
+        .then((newOptions) => {
+          setIsLoading(false);
+          setApplicationOptions(newOptions);
+          setFullCount(getFullCount());
+        })
+        .catch((error) => {
+          if (!error.isCanceled) {
+            throw error;
+          }
+        });
+    },
+    [fetch, getFullCount]
+  );
+
+
+  // Load data for Aplication 
   useEffect(() => {
+    setIsLoading(false);
     handleFetch('');
-    return () => stop();
+    return () => stop()
   }, [handleFetch, stop]);
 
+  // Load the function during page load
   useEffect(() => {
-    const defaultErrorMsg = "Error in getting the user context from SPLUNK, Please refresh the Page";
-    getUserRoleDetails(defaultErrorMsg)
-      .then((response) => {
-        if (response.ok) {
-          response.json().then((data) => {
-            setApplicationFormData((prev) => ({
-              ...prev,
-              currentUser: data.entry[0].content.email,
-            }));
-          });
-        }
-      })
+    getUserContext();
+  }, []);
+
+
+  const getUserContext = () => {
+    const defaultErrorMsg = "Error in getting the user context from SPLUNK, Please refresh the Page"
+    getUserRoleDetails(defaultErrorMsg).then((response) => {
+      if (response.ok) {
+        response.json().then((data) => {
+          setApplicationFormData((prev) => ({
+            ...prev,
+            currentUser: data.entry[0].content.email,
+          }));
+        });
+      }
+    })
       .catch((err) => {
         console.error("User Context Error:", err);
       });
-  }, [setApplicationFormData]);
-
-  const handleChange = (field) => (e, { value }) => {
-    setApplicationFormData((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handleSelectChange = (e, { value }) => {
-    const selected = applicationOptions.find(app => app.id === value);
+
+  const handleChange = useCallback((e, { value: newValue }) => {
+    // setSelectedValue(newValue);
+    // setApplicationFormData((prev) => ({ ...prev, appID: newValue }));
+    const selected = applicationOptions.find(app => app.id === newValue);
     setApplicationFormData((prev) => ({
       ...prev,
       appID: selected?.id || '',
-      dataOwner: selected?.id || '',
+      dataOwner: selected?.product_owner || '',
     }));
-  };
+  }, [applicationOptions, setApplicationFormData]);
 
-  const handleFilterChange = (e, { keyword }) => {
-    handleFetch(keyword);
-  };
+  // const handleChange = (field) => (e,{value}) => {
+  //   setApplicationFormData((prev) => ({...prev, [field]: value}));
+  // };
+
+  const handleFilterChange = useCallback(
+    (e, { keyword }) => {
+      handleFetch(keyword);
+    },
+    [handleFetch]
+  );
+
 
   const createOption = (app, isSelected = false) => (
+    /**
+     * Filtering is done server-side and the `matchRanges` prop would be either
+     * be provided by the server, deduced based on the match algorithm, or omitted.
+     * To simplify this example, the search value only matches the beginning of the title.
+     */
     <Select.Option
       hidden={!!isSelected}
       key={isSelected ? `selected-${app.id}` : app.id}
@@ -77,7 +116,7 @@ export default function ApplicationDetailsForm({ applicationFormData, setApplica
     />
   );
 
-  const generateOptions = () => {
+  const generateOptions = useCallback(() => {
     const list = applicationOptions.map((app) => createOption(app));
     if (applicationFormData.appID) {
       const selectedApp = getOption(applicationFormData.appID);
@@ -86,55 +125,55 @@ export default function ApplicationDetailsForm({ applicationFormData, setApplica
       }
     }
     return list;
-  };
+  }, [applicationOptions, applicationFormData, getOption]);
+
+
+  const footerMessage = () => {
+    const fullCount = getFullCount();
+    if (fullCount > applicationOptions.length && !isLoading) {
+      return `${applicationOptions.length} of ${fullCount} applications`;
+    }
+    return null;
+  }
 
   return (
+
     <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-      <ColumnLayout columns={2}>
+      <ColumnLayout >
         <ColumnLayout.Row>
-          <ColumnLayout.Column span={2}>
-            <ControlGroup
-              label="Application Name"
-              tooltip="Provide Application Name"
-              error={!!errors.appID}
-              help={errors.appID}
-            >
+          <ColumnLayout.Column span={1}>
+            <ControlGroup label="Application Name" tooltip="Provide Application Name">
               <Select
                 filter="controlled"
                 placeholder="Select an Application..."
                 menuStyle={{ width: 300 }}
-                onChange={handleSelectChange}
+                onChange={handleChange}
                 onFilterChange={handleFilterChange}
                 isLoadingOptions={isLoading}
-                value={applicationFormData.appID}
+                footerMessage={footerMessage()}
+                value={applicationFormData?.appID || ''}
               >
                 {generateOptions()}
               </Select>
             </ControlGroup>
           </ColumnLayout.Column>
         </ColumnLayout.Row>
-
         <ColumnLayout.Row>
-          <ColumnLayout.Column span={2}>
+          <ColumnLayout.Column span={1}>
             <ControlGroup label="Email Address of Requestor" tooltip="Email Address">
-              <Text name="EmailAddress" value={applicationFormData.currentUser || ''} disabled />
+              <Text
+                name="EmailAddress"
+                value={applicationFormData?.currentUser || ''}
+                disabled
+              />
             </ControlGroup>
           </ColumnLayout.Column>
         </ColumnLayout.Row>
 
         <ColumnLayout.Row>
           <ColumnLayout.Column span={2}>
-            <ControlGroup
-              label="Business Justification"
-              tooltip="Provide a Brief Business Justification"
-              error={!!errors.businessJustification}
-              help={errors.businessJustification}
-            >
-              <TextArea
-                name="BusinessJustification"
-                value={applicationFormData.businessJustification || ''}
-                onChange={handleChange('businessJustification')}
-              />
+            <ControlGroup label="Business Justification" tooltip="Provide a Brief Business Justification">
+              <TextArea name="BusinessJustification" />
             </ControlGroup>
           </ColumnLayout.Column>
         </ColumnLayout.Row>
@@ -142,44 +181,39 @@ export default function ApplicationDetailsForm({ applicationFormData, setApplica
         <ColumnLayout.Row>
           <ColumnLayout.Column span={1}>
             <ControlGroup label="Ability AppID" tooltip="Enter Ability AppID">
-              <Text name="AbilityAppID" value={applicationFormData.appID || ''} disabled />
+              <Text name="AbilityAppID"
+                value={applicationFormData?.appID || ''}
+                disabled
+              />
             </ControlGroup>
           </ColumnLayout.Column>
 
           <ColumnLayout.Column span={1}>
             <ControlGroup label="Data Owner" tooltip="DataOwner">
-              <Text name="DataOwner" value={applicationFormData.dataOwner || ''} disabled />
+              <Text name="DataOwner"
+                value={applicationFormData?.dataOwner || ''}
+                disabled
+              />
             </ControlGroup>
           </ColumnLayout.Column>
         </ColumnLayout.Row>
 
         <ColumnLayout.Row>
           <ColumnLayout.Column span={1}>
-            <ControlGroup
-              label="Technical Contact Email"
-              tooltip="Technical Contact of your team"
-              error={!!errors.techContact}
-              help={errors.techContact}
-            >
-              <Text
-                name="TechnicalContact"
-                value={applicationFormData.techContact || ''}
-                onChange={handleChange('techContact')}
+            <ControlGroup label="Technical Contact Email" tooltip="Technical Contact of your team">
+              <Text name="TechnicalContact"
+                onChange={(e, { value }) =>
+                  setApplicationFormData((prev) => ({ ...prev, techContact: value }))}
               />
             </ControlGroup>
           </ColumnLayout.Column>
-
+        </ColumnLayout.Row>
+        <ColumnLayout.Row>
           <ColumnLayout.Column span={1}>
-            <ControlGroup
-              label="Support Contact Email"
-              tooltip="Support Contact Details"
-              error={!!errors.supportContact}
-              help={errors.supportContact}
-            >
-              <Text
-                name="SupportContactEmail"
-                value={applicationFormData.supportContact || ''}
-                onChange={handleChange('supportContact')}
+            <ControlGroup label="Support Contact Email" tooltip="Support Contact Details">
+              <Text name="SupportContactEmail"
+                onChange={(e, { value }) =>
+                  setApplicationFormData((prev) => ({ ...prev, supportContact: value }))}
               />
             </ControlGroup>
           </ColumnLayout.Column>
