@@ -10,20 +10,20 @@ import TextArea from '@splunk/react-ui/TextArea';
 import Select from '@splunk/react-ui/Select';
 import Typography from '@splunk/react-ui/Typography';
 import WaitSpinner from '@splunk/react-ui/WaitSpinner';
-import useFetchOptions, { isApplicationOption } from './ApplicationFetch';
+import useFetchOptions, { isApplicationOption } from '../../common/ApplicationFetch';
 import getUserRoleDetails from '../../common/GetUserDetails'
 
 
 
-export default function ApplicationDetailsForm({ applicationFormData, setApplicationFormData }) {
+export default function ApplicationDetailsForm({ applicationFormData, setApplicationFormData, applicationFormErrors }) {
 
   const [applicationOptions, setApplicationOptions] = useState([]);
   const [fullCount, setFullCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedApp, setSelectedApp] = useState(null);
+  // const [selectedApp, setSelectedApp] = useState(null);
 
-  const [selectedValue, setSelectedValue] = useState('');
-  const { fetch, getFullCount, getOption, stop } = useFetchOptions();
+  // const [selectedValue, setSelectedValue] = useState('');
+  const { fetch, getFullCount,fetchByAppID, getOption, stop } = useFetchOptions();
 
 
   // Replace with your real API
@@ -58,6 +58,20 @@ export default function ApplicationDetailsForm({ applicationFormData, setApplica
   useEffect(() => {
     getUserContext();
   }, []);
+
+  /** when appID Changes, make sure selected app is loaded **/
+  useEffect(() => {
+    if (applicationFormData?.appID){
+      const existInList = applicationOptions.find(opt => opt.id === applicationFormData.appID);
+      if (!existInList){
+        fetchByAppID(applicationFormData.appID).then((selected) => {
+          if (selected) {
+            setApplicationOptions((prev) => [...prev,selected]);
+          }
+        })
+      } 
+    }
+  }, [applicationFormData.appID,applicationOptions,fetchByAppID])
 
 
   const getUserContext = () => {
@@ -142,8 +156,13 @@ export default function ApplicationDetailsForm({ applicationFormData, setApplica
       <ColumnLayout >
         <ColumnLayout.Row>
           <ColumnLayout.Column span={1}>
-            <ControlGroup label="Application Name" tooltip="Provide Application Name">
-              <Select
+            <ControlGroup 
+            label="Application Name" 
+            tooltip="Provide Application Name"
+            error={!!applicationFormErrors.appID}
+            help={!applicationFormErrors.appID}
+            >
+            <Select
                 filter="controlled"
                 placeholder="Select an Application..."
                 menuStyle={{ width: 300 }}
@@ -173,7 +192,10 @@ export default function ApplicationDetailsForm({ applicationFormData, setApplica
         <ColumnLayout.Row>
           <ColumnLayout.Column span={2}>
             <ControlGroup label="Business Justification" tooltip="Provide a Brief Business Justification">
-              <TextArea name="BusinessJustification" />
+              <TextArea name="businessJustification" 
+              value={applicationFormData?.businessJustification || ''}
+              onChange={(e, { value }) =>
+                  setApplicationFormData((prev) => ({ ...prev, businessJustification: value }))}/>
             </ControlGroup>
           </ColumnLayout.Column>
         </ColumnLayout.Row>
@@ -181,7 +203,7 @@ export default function ApplicationDetailsForm({ applicationFormData, setApplica
         <ColumnLayout.Row>
           <ColumnLayout.Column span={1}>
             <ControlGroup label="Ability AppID" tooltip="Enter Ability AppID">
-              <Text name="AbilityAppID"
+              <Text name="appID"
                 value={applicationFormData?.appID || ''}
                 disabled
               />
@@ -190,7 +212,7 @@ export default function ApplicationDetailsForm({ applicationFormData, setApplica
 
           <ColumnLayout.Column span={1}>
             <ControlGroup label="Data Owner" tooltip="DataOwner">
-              <Text name="DataOwner"
+              <Text name="dataOwner"
                 value={applicationFormData?.dataOwner || ''}
                 disabled
               />
@@ -201,7 +223,8 @@ export default function ApplicationDetailsForm({ applicationFormData, setApplica
         <ColumnLayout.Row>
           <ColumnLayout.Column span={1}>
             <ControlGroup label="Technical Contact Email" tooltip="Technical Contact of your team">
-              <Text name="TechnicalContact"
+              <Text name="techContact"
+                value={applicationFormData?.techContact || ''}
                 onChange={(e, { value }) =>
                   setApplicationFormData((prev) => ({ ...prev, techContact: value }))}
               />
@@ -210,8 +233,14 @@ export default function ApplicationDetailsForm({ applicationFormData, setApplica
         </ColumnLayout.Row>
         <ColumnLayout.Row>
           <ColumnLayout.Column span={1}>
-            <ControlGroup label="Support Contact Email" tooltip="Support Contact Details">
-              <Text name="SupportContactEmail"
+            <ControlGroup 
+            label="Support Contact Email" 
+            tooltip="Support Contact Details"
+            error={!!applicationFormErrors.supportContact}
+            help={!applicationFormErrors.supportContact}
+            >
+              <Text name="supportContact"
+                value={applicationFormData?.supportContact || ''}
                 onChange={(e, { value }) =>
                   setApplicationFormData((prev) => ({ ...prev, supportContact: value }))}
               />
