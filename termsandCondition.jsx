@@ -5,15 +5,16 @@ import Paragraph from '@splunk/react-ui/Paragraph';
 import Switch from '@splunk/react-ui/Switch';
 
 export default function TermsAndConditionForm({
-  applicationFormData,
+  applicationFormData = {},
   setApplicationFormData,
   applicationFormErrors = {},
 }) {
-
-
-    const handleSwitchClick = useCallback(() => {
-        setApplicationFormData((prev,current) => ({...prev,termsAccepted: !current}));
-    }, []);
+  const handleSwitchClick = useCallback(() => {
+    setApplicationFormData((prev) => ({
+      ...prev,
+      termsAccepted: !prev?.termsAccepted,
+    }));
+  }, [setApplicationFormData]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
@@ -39,12 +40,10 @@ export default function TermsAndConditionForm({
 
       <ControlGroup label="Confirmation">
         <Switch
-          value={applicationFormData?.termsAccepted}
-          onClick={handleSwitchClick}
-          selected={applicationFormData?.termsAccepted }
           appearance="checkbox"
+          selected={!!applicationFormData?.termsAccepted}
+          onClick={handleSwitchClick}
           error={applicationFormErrors?.termsAccepted}
-          
         >
           I have read and accept the Terms and Conditions.
         </Switch>
