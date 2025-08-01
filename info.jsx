@@ -1,59 +1,79 @@
-import * as React from "react";
+import React, { useMemo, useEffect, useState } from "react";
 import ColumnLayout from '@splunk/react-ui/ColumnLayout';
 import Typography from '@splunk/react-ui/Typography';
 
-export default function Info({ applicationFormData, setApplicationFormData }) {
+export default function Info({ applicationFormData, onTotalCostChange }) {
+  const standardRestQueryUnitCost = 3.5;
+  const serviceCost = 1000;
+  const dedicatedSupportCost = 100;
+  const standardAPIRequestCost = 500;
+  const nonStandardAPIRequestCost = 1000;
 
-  let standardRestQueryUnitCost = 3.5;
-  let serviceCost = 1000;
-  let dedicatedSupportCost = 100;
-  let standardAPIRequestCost = 500;
-  let nonStandardAPIRequestCost = 1000;
+  const products = useMemo(() => {
+    const items = [
+      {
+        name: "Selected Service",
+        desc: "Product Cost, SPLUNK API Access to Platform",
+        price: serviceCost,
+      },
+      {
+        name: "Dedicated support",
+        desc: "Support required on-going basis for maintaining the integration i.e. token re-generation/ adhoc support etc.",
+        price: dedicatedSupportCost,
+      },
+    ];
 
-  const products = [
-    {
-      name: "Selected Service",
-      desc: "Product Cost, SPLUNK API Access to Platform",
-      price: serviceCost,
-    },
-    {
-      name: "Dedicated support",
-      desc: "Support required on-going basis for maintaining the integration i.e. token re-generation/ adhoc support etc.",
-      price: dedicatedSupportCost,
-    },
-  ];
+    if (applicationFormData.restQueryFrequency && Number(applicationFormData.restQueryFrequency) > 0) {
+      const freq = Number(applicationFormData.restQueryFrequency);
+      items.push({
+        name: "Compute needed on daily basis",
+        desc: `Compute needed on daily basis for total no of ${Math.floor(1440 / freq)} execution`,
+        price: (1440 / freq) * standardRestQueryUnitCost,
+      });
+    }
 
-  // Add conditional costs
-  if (applicationFormData.restQueryFrequency) {
-    products.push({
-      name: "Compute needed on daily basis",
-      desc: `Compute needed on daily basis for total no of ${1440 / applicationFormData.restQueryFrequency} execution`,
-      price: 1440 / applicationFormData.restQueryFrequency * standardRestQueryUnitCost,
-    });
-  }
+    if (applicationFormData.standardAPIRequestType === 'Yes') {
+      items.push({
+        name: "Standard API Access",
+        desc: "Standard API Service Provisioning cost",
+        price: standardAPIRequestCost,
+      });
+    }
 
-  if (applicationFormData.standardAPIRequestType === 'Yes') {
-    products.push({
-      name: "Standard API Access",
-      desc: "Standard API Service Provisioning cost",
-      price: standardAPIRequestCost,
-    });
-  }
+    if (applicationFormData.nonStandardAPIRequestType === 'Yes') {
+      items.push({
+        name: "Non-Standard API Access",
+        desc: "Non Standard, Custom Query Review by Splunk team and optimize the query",
+        price: nonStandardAPIRequestCost,
+      });
+    }
 
-  if (applicationFormData.nonStandardAPIRequestType === 'Yes') {
-    products.push({
-      name: "Non-Standard API Access",
-      desc: "Non Standard, Custom Query Review by Splunk team and optimize the query",
-      price: nonStandardAPIRequestCost,
-    });
-  }
+    return items;
+  }, [
+    applicationFormData.restQueryFrequency,
+    applicationFormData.standardAPIRequestType,
+    applicationFormData.nonStandardAPIRequestType
+  ]);
 
+  const totalCost = useMemo(
+    () => products.reduce((sum, item) => sum + item.price, 0),
+    [products]
+  );
 
+  // EFFECT: inform parent of new total cost
+  useEffect(() => {
+    if (typeof onTotalCostChange === 'function') {
+      onTotalCostChange(totalCost);
+    }
+  }, [totalCost, onTotalCostChange]);
 
-  const totalCost = products.reduce((sum, item) => sum + item.price, 0);
-
-
-
+  // Add simple effect state for animation
+  const [animate, setAnimate] = useState(false);
+  useEffect(() => {
+    setAnimate(true);
+    const timer = setTimeout(() => setAnimate(false), 500);
+    return () => clearTimeout(timer);
+  }, [totalCost]);
 
   return (
     <ColumnLayout columns={1}>
@@ -97,20 +117,20 @@ export default function Info({ applicationFormData, setApplicationFormData }) {
             lineHeight="comfortable"
             variant="title4"
             size="18"
-
-            
-
           >
             Estimated Total Cost
           </Typography>
         </ColumnLayout.Column>
         <ColumnLayout.Column span={1}>
-          <Typography variant="title4" weight="bold"
-          style={{
-              transition: 'all 0.5s ease',
-              color: totalCost ? '#0073e6' : 'inherit',
-              transform: totalCost ? 'scale(1.1)' : 'scale(1)',
-            }}>
+          <Typography
+            variant="title4"
+            weight="bold"
+            style={{
+              transition: 'transform 0.5s ease, color 0.5s ease',
+              color: animate ? '#0073e6' : 'inherit',
+              transform: animate ? 'scale(1.2)' : 'scale(1)',
+            }}
+          >
             ${totalCost.toFixed(2)}
           </Typography>
         </ColumnLayout.Column>
