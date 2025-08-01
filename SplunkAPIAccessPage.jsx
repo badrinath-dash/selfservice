@@ -24,6 +24,7 @@ const steps = [
 export default function SplunkRestAPIAccess() {
   const [activeStepId, setActiveStepId] = useState(0);
   const numSteps = steps.length;
+  const [totalCost, setTotalCost] = useState(0);
 
   const [applicationFormData, setApplicationFormData] = useState({
     businessJustification: '',
@@ -98,22 +99,6 @@ export default function SplunkRestAPIAccess() {
 
 
 
-  const calculateCost = useCallback(() => {
-    let baseCost = 100;
-    baseCost += (1440 / applicationFormData.restQueryFrequency) * 10;
-
-
-
-    if (applicationFormData.standardAPIRequestType === 'Yes') {
-      baseCost += 0;
-    }
-
-    if (applicationFormData.nonStandardAPIRequestType === 'Yes') {
-      baseCost += 1000;
-    }
-
-    return `$${baseCost.toFixed(2)}`;
-  }, [applicationFormData]);
 
 
 
@@ -215,10 +200,9 @@ export default function SplunkRestAPIAccess() {
           <div style={{ marginTop: '24px' }}>
             {/* <Info totalPrice={activeStepId >= 4 ? '$144.97' : '$134.98'} /> */}
             <Info
-              totalCost={calculateCost()}
               applicationFormData={applicationFormData}
+              onTotalCostChange={setTotalCost}
             >
-
             </Info>
           </div>
         </ColumnLayout.Column>
