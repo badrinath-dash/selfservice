@@ -337,3 +337,44 @@ def stream_events(inputs: smi.InputDefinition, event_writer: smi.EventWriter):
                 auth=auth,
                 api_start_time_ms=api_start_time,
                 api_end_time_ms=api_end_time,
+                proxy_settings=proxy_settings,
+                validate_ssl=validate_ssl,
+                apigee_ssl_client_cert_pem=apigee_ssl_client_cert_pem,
+                apigee_ssl_key_pem=apigee_ssl_key_pem,
+                apigee_ssl_client_cert_path=apigee_ssl_client_cert_path,
+                apigee_ssl_key_path=apigee_ssl_key_path,
+            )
+
+            # --- Write events ---
+            # Allow both list and dict responses
+            events = data if isinstance(data, list) else [data]
+            count = 0
+            for item in events:
+                event_writer.write_event(
+                    smi.Event(
+                        data=json.dumps(item, ensure_ascii=False, default=str),
+                        index=input_item.get("index"),
+                        sourcetype=sourcetype,
+                    )
+                )
+                count += 1
+
+            log.events_ingested(
+                logger,
+                input_name,
+                sourcetype,
+                count,
+                input_item.get("index"),
+                account=input_item.get("account"),
+            )
+
+            log.modular_input_end(logger, normalized_input_name)
+
+        except Exception as e:
+            # Splunk-recommended structured exception log
+            log.log_exception(
+                logger,
+                e,
+                "apigee_ingest_error",
+                msg_before=f"Exception while ingesting data for input={normalized_input_name}: ",
+            )
