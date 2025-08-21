@@ -433,8 +433,165 @@ def process_events_with_checkpoint(
     return events_processed
 
 
+def validate_start_date(start_from: str, logger: logging.Logger) -> bool:
+    """
+    Validate start_from date to ensure it's not in the future and is properly formatted.
+    
+    Args:
+        start_from: Date string to validate
+        logger: Logger instance for warnings
+        
+    Returns:
+        True if valid, False if invalid
+        
+    Raises:
+        ValueError: With descriptive message if validation fails
+    """
+    if not start_from or not start_from.strip():
+        return True  # Empty/None is valid (will use default)
+    
+    start_from = start_from.strip()
+    current_time = time.time()
+    
+    try:
+        # Parse the date string
+        parsed_time_ms = _to_epoch_ms_from_datestr(start_from)
+        parsed_time_sec = parsed_time_ms / 1000
+        
+        # Check if date is in the future (with 1 minute tolerance for clock skew)
+        tolerance_sec = 60  # 1 minute
+        if parsed_time_sec > (current_time + tolerance_sec):
+            future_date = datetime.fromtimestamp(parsed_time_sec).strftime("%Y-%m-%d %H:%M:%S")
+            current_date = datetime.fromtimestamp(current_time).strftime("%Y-%m-%d %H:%M:%S")
+            raise ValueError(
+                f"start_from date '{start_from}' ({future_date}) cannot be in the future. "
+                f"Current time: {current_date}"
+            )
+        
+        # Check if date is too far in the past (optional - prevents accidental large data pulls)
+        max_days_back = 365 * 2  # 2 years
+        earliest_allowed = current_time - (max_days_back * 24 * 3600)
+        if parsed_time_sec < earliest_allowed:
+            earliest_date = datetime.fromtimestamp(earliest_allowed).strftime("%Y-%m-%d")
+            raise ValueError(
+                f"start_from date '{start_from}' is too far in the past. "
+                f"Maximum allowed: {max_days_back} days back ({earliest_date})"
+            )
+        
+        logger.debug(f"start_from validation passed: {start_from} -> {datetime.fromtimestamp(parsed_time_sec)}")
+        return True
+        
+    except ValueError as e:
+        # Re-raise validation errors with more context
+        if "start_from date" in str(e):
+            raise e
+        else:
+            # This is a parsing error
+            raise ValueError(
+                f"Invalid date format for start_from: '{start_from}'. "
+                f"Supported formats: YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS. "
+                f"Examples: '2024-01-15', '2024-01-15T10:30:00'"
+            )
+
+
+def validate_input_config(input_item: Dict[str, Any], logger: logging.Logger) -> None:
+    """
+    Validate all input configuration parameters.
+    
+    Args:
+        input_item: Input configuration dictionary
+        logger: Logger instance
+        
+    Raises:
+        ValueError: If any validation fails
+    """
+    input_name = input_item.get("name", "unknown")
+    
+    # Validate required fields
+    required_fields = ["account", "apigee_url"]
+    for field in required_fields:
+        if not input_item.get(field):
+            raise ValueError(f"Input '{input_name}': Required field '{field}' is missing or empty")
+    
+    # Validate start_from date
+    start_from = input_item.get("start_from")
+    if start_from:
+        validate_start_date(start_from, logger)
+    
+    # Validate interval (should be positive integer)
+    interval = input_item.get("interval")
+    if interval:
+        try:
+            interval_int = int(interval)
+            if interval_int <= 0:
+                raise ValueError(f"Input '{input_name}': interval must be a positive integer, got: {interval}")
+            if interval_int < 60:
+                logger.warning(f"Input '{input_name}': interval '{interval}' seconds is very short, consider using 60+ seconds")
+        except (ValueError, TypeError):
+            raise ValueError(f"Input '{input_name}': interval must be a valid integer, got: {interval}")
+    
+    # Validate URL format
+    apigee_url = input_item.get("apigee_url", "")
+    if not apigee_url.startswith(("http://", "https://")):
+        raise ValueError(f"Input '{input_name}': apigee_url must start with http:// or https://, got: {apigee_url}")
+    
+    # Validate timestamp_fields format
+    timestamp_fields = input_item.get("timestamp_fields", "")
+    if timestamp_fields:
+        # Check for valid field names (no special characters except dots and underscores)
+        fields = [f.strip() for f in timestamp_fields.split(",")]
+        invalid_fields = []
+        for field in fields:
+            if not field:
+                continue
+            # Allow alphanumeric, dots, and underscores
+            if not all(c.isalnum() or c in "._" for c in field):
+                invalid_fields.append(field)
+        
+        if invalid_fields:
+            raise ValueError(
+                f"Input '{input_name}': Invalid characters in timestamp_fields. "
+                f"Only letters, numbers, dots, and underscores allowed. "
+                f"Invalid fields: {invalid_fields}"
+            )
+    
+    # Validate api_params JSON format
+    api_params = input_item.get("api_params", "{}")
+    if api_params and api_params.strip():
+        try:
+            json.loads(api_params)
+        except json.JSONDecodeError as e:
+            raise ValueError(
+                f"Input '{input_name}': api_params must be valid JSON. "
+                f"Error: {e}. Got: {api_params}"
+            )
+
+
 def validate_input(definition: smi.ValidationDefinition):
-    return
+    """
+    Splunk modular input validation function.
+    Called by Splunk before saving input configuration.
+    """
+    try:
+        # Get the input configuration from the definition
+        for input_name, params in definition.inputs.items():
+            logger = logger_for_input(input_name.split("/")[-1])
+            
+            # Convert parameters to dictionary format
+            input_dict = {param.name: param.value for param in params}
+            input_dict["name"] = input_name
+            
+            # Validate the configuration
+            validate_input_config(input_dict, logger)
+            
+            logger.info(f"Input validation passed for: {input_name}")
+            
+    except ValueError as e:
+        # Splunk expects ValidationError to be raised
+        raise ValueError(str(e))
+    except Exception as e:
+        # Catch any unexpected errors
+        raise ValueError(f"Validation failed with unexpected error: {e}")
 
 
 def stream_events(inputs: smi.InputDefinition, event_writer: smi.EventWriter):
@@ -483,11 +640,18 @@ def stream_events(inputs: smi.InputDefinition, event_writer: smi.EventWriter):
             apigee_ssl_client_cert_pem = account_details.get("apigee_ssl_client_cert")
             apigee_ssl_key_pem = account_details.get("apigee_ssl_key")
 
-            # Input configuration
+            # Input configuration with validation
             apigee_url_endpoint = input_item.get("apigee_url")
             start_from = input_item.get("start_from")
             interval = input_item.get("interval")
             sourcetype = input_item.get("sourcetype") or "apigee:audit"
+
+            # Validate input configuration
+            try:
+                validate_input_config(input_item, logger)
+            except ValueError as ve:
+                logger.error(f"Input configuration validation failed: {ve}")
+                raise ve
 
             # NEW: Checkpoint configuration
             timestamp_fields_str = input_item.get("timestamp_fields", "timestamp,timeStamp,created,createdAt")
