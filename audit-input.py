@@ -247,7 +247,7 @@ def extract_timestamp_from_event(
 def get_checkpoint_manager(session_key: str, input_name: str) -> checkpointer.CheckpointerInterface:
     """Initialize and return checkpoint manager."""
     return checkpointer.KVStoreCheckpointer(
-        collection_name="apigee_audit_checkpoints",
+        collection_name="splunk_ta_apigee_checkpointer",
         session_key=session_key,
         app=ADDON_NAME
     )
@@ -433,30 +433,44 @@ def process_events_with_checkpoint(
     return events_processed
 
 
+
 def validate_start_date(start_from: str, logger: logging.Logger) -> bool:
     """
     Validate start_from date to ensure it's not in the future and is properly formatted.
     Matches UCC configuration which expects YYYY-MM-DD format only.
-    
+
     Args:
         start_from: Date string to validate (YYYY-MM-DD format)
         logger: Logger instance for warnings
-        
+
     Returns:
         True if valid, False if invalid
-        
+
     Raises:
         ValueError: With descriptive message if validation fails
     """
     if not start_from or not start_from.strip():
         return True  # Empty/None is valid (will use default)
-    
+
     start_from = start_from.strip()
-    current_time = time.time()
-    
-    # First validate the regex pattern (same as UCC config)
-    import re
-    if not re.match(r'^\d{4}-\d{2}-\d{2}
+
+    # Validate format using regex
+    if not re.match(r'^\d{4}-\d{2}-\d{2}$', start_from):
+        logger.warning("Invalid date format for start_from: %s", start_from)
+        raise ValueError("Date must be in YYYY-MM-DD format.")
+
+    try:
+        start_date = datetime.strptime(start_from, "%Y-%m-%d")
+    except ValueError as e:
+        logger.warning("Date parsing failed for start_from: %s", start_from)
+        raise ValueError(f"Invalid date: {e}")
+
+    if start_date > datetime.now():
+        logger.warning("start_from date is in the future: %s", start_from)
+        raise ValueError("Start date cannot be in the future.")
+
+    return True
+
 
 
 def validate_input_config(input_item: Dict[str, Any], logger: logging.Logger) -> None:
@@ -763,51 +777,6 @@ def stream_events(inputs: smi.InputDefinition, event_writer: smi.EventWriter):
                 e,
                 "apigee_ingest_error",
                 msg_before=f"Exception while ingesting data for input={normalized_input_name}: ",
-            )
-, start_from):
-        raise ValueError(
-            f"Date must be in YYYY-MM-DD format. Got: '{start_from}'. "
-            f"Example: '2024-08-21'"
-        )
-    
-    try:
-        # Parse the date string (only YYYY-MM-DD format supported)
-        parsed_time_ms = _to_epoch_ms_from_datestr(start_from)
-        parsed_time_sec = parsed_time_ms / 1000
-        
-        # Check if date is in the future (with 1 day tolerance since we only have date, not time)
-        # Set time to end of day for comparison
-        tolerance_sec = 24 * 3600  # 1 day tolerance
-        if parsed_time_sec > (current_time + tolerance_sec):
-            future_date = datetime.fromtimestamp(parsed_time_sec).strftime("%Y-%m-%d")
-            current_date = datetime.fromtimestamp(current_time).strftime("%Y-%m-%d")
-            raise ValueError(
-                f"Start date '{start_from}' cannot be in the future. "
-                f"Current date: {current_date}"
-            )
-        
-        # Check if date is too far in the past (prevents accidental large data pulls)
-        max_days_back = 365 * 2  # 2 years
-        earliest_allowed = current_time - (max_days_back * 24 * 3600)
-        if parsed_time_sec < earliest_allowed:
-            earliest_date = datetime.fromtimestamp(earliest_allowed).strftime("%Y-%m-%d")
-            raise ValueError(
-                f"Start date '{start_from}' is too far in the past. "
-                f"Maximum allowed: {max_days_back} days ({earliest_date})"
-            )
-        
-        logger.debug(f"start_from validation passed: {start_from} -> {datetime.fromtimestamp(parsed_time_sec)}")
-        return True
-        
-    except ValueError as e:
-        # Re-raise validation errors with more context
-        if "Start date" in str(e) or "Maximum allowed" in str(e):
-            raise e
-        else:
-            # This is a parsing error (shouldn't happen if regex passed)
-            raise ValueError(
-                f"Invalid date format for start_from: '{start_from}'. "
-                f"Date must be in YYYY-MM-DD format. Example: '2024-08-21'"
             )
 
 
