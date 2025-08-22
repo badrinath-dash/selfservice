@@ -1,0 +1,20 @@
+{
+  "auditRecord": [
+    {
+      "operation": "UPDATE",
+      "request": "ahamilton@example.com",
+      "requestUri": "/v1/organizations/myorg/userroles/orgadmin/users",
+      "responseCode": 200,
+      "timeStamp": 1602682379741,
+      "user": "admin@example.com"
+    },
+    {
+      "operation": "CREATE",
+      "request": "''myorg''",
+      "requestUri": "/v1/organizations/myorg/apiproducts/myproduct",
+      "responseCode": 201,
+      "timeStamp": 1602682379741,
+      "user": "admin@example.com"
+    }
+  ]
+}
