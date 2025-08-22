@@ -382,15 +382,15 @@
                             "field": "timestamp_fields",
                             "help": "Enter the name of the timestamp field which SPLUNK will use to process event timeStamp e.g. timeStamp or created_at etc..",
                             "required": true,
-                            "default": "timeStamp"
+                            "defaultValue": "timeStamp"
                         },
                         {
                             "type": "text",
                             "label": "API Parameter",
                             "field": "api_params",
-                            "help": "API Params to use for feteching data from APIGEE API, Should be a valid JSON",
+                            "help": "API Params to use for fetching data from APIGEE API, Should be a valid JSON",
                             "required": true,
-                            "default": "{'limit':'1000','softOrder':'asc'}"
+                            "defaultValue": "{\"limit\":\"1000\",\"sortOrder\":\"asc\"}"
                         },
                         {
                             "type": "singleSelect",
