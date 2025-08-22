@@ -18,7 +18,7 @@ from requests.auth import HTTPBasicAuth
 from solnlib import conf_manager, log
 from splunklib import modularinput as smi
 
-from utils import (
+from Splunk_TA_Apigee_utils import (
     ADDON_NAME,
     build_cert_files,
     cleanup_temp_files,
@@ -133,25 +133,39 @@ def validate_input_config(input_item: Dict[str, Any], logger: logging.Logger) ->
 # ------------------------- Modular input validate -------------------------
 
 def validate_input(definition: smi.ValidationDefinition):
-    try:
-        for input_name, params in definition.inputs.items():
-            logger = logger_for_input(input_name.split("/")[-1])
-            input_dict = {p.name: p.value for p in params}
-            input_dict["name"] = input_name
-            validate_input_config(input_dict, logger)
-            logger.info("Input validation passed for: %s", input_name)
-    except Exception as e:
-        raise ValueError(str(e))
+    """Validate the input stanza before saving in SPLUNK Web."""
+    params = definition.parameters
+    interval = int(params.get("interval",300))
+    if interval <10 or interval > 3600:
+        raise ValueError("Interval must be between 10 and 3600 seconds.")
+    
+    url = params.get("apigee_url")
+    if not url or not url.startswith("https://"):
+        raise ValueError("apigee_url must be a validhttps:// endpoint.")
+    return
 
 
 # ------------------------- API call -------------------------
-
 def build_apigee_audit_url(base_url: str, org: str, audit_path: str) -> str:
+    """
+    Constructs the full Apigee API URL.
+
+    Args:
+        base_url (str): Base endpoint, e.g., https://api.enterprise.apigee.com/v1
+        organization (str): Apigee organization name
+        resource_uri (str): Audit resource URI, e.g., /developers
+
+    Returns:
+        str: Full URL to call the Apigee API
+    """
     base = base_url.rstrip("/")
     path = audit_path.lstrip("/") if audit_path and audit_path != "/" else ""
     if path:
-        return f"{base}/v1/organizations/{org}/audits/{path}"
-    return f"{base}/v1/organizations/{org}/audits"
+        return f"{base}/audits/organizations/{org}/{path}"
+    return f"{base}/audits/organizations/{org}/"
+
+
+
 
 
 def get_data_from_api(
@@ -186,6 +200,8 @@ def get_data_from_api(
         **api_params,
     }
 
+    logger.info("Calling Apigee API endpoint with params: %s", params)
+
     headers = {"Accept": "application/json"}
 
     try:
@@ -199,7 +215,10 @@ def get_data_from_api(
             cert=cert_tuple,
             verify_ssl=validate_ssl,
         )
+        logger.info("response  code from the APIGEE API is : %s", response.status_code)
+        logger.debug("Actual response from the APIGEE API is : %s", response.json())
         return response.json()
+       
     finally:
         cleanup_temp_files(logger, temps)
 
@@ -223,11 +242,16 @@ def process_events_with_checkpoint(
     without_ts: List[Dict[str, Any]] = []
 
     for ev in events:
-        ts = extract_timestamp_from_event(ev, timestamp_fields, logger)
-        if ts:
-            with_ts.append((ev, ts))
-        else:
-            without_ts.append(ev)
+        audit_records = ev.get("auditRecord", [])
+        logger.debug("audit_records is : %s", audit_records)
+        for record in audit_records:
+            ts = extract_timestamp_from_event(record, timestamp_fields, logger)
+            if ts:
+                logger.debug("ts is : %s", ts)
+                with_ts.append((record, ts))
+            else:
+                logger.debug("ts is : %s", ts)
+                without_ts.append(record)
 
     with_ts.sort(key=lambda x: x[1])
 
@@ -321,7 +345,7 @@ def stream_events(inputs: smi.InputDefinition, event_writer: smi.EventWriter):
             )
 
             # api params
-            api_params_raw = input_item.get("api_params", '{"limit":"1000","sortOrder":"asc"}')
+            api_params_raw = input_item.get("api_params", '{"rows":"1000","expand":"true"}')
             try:
                 api_params = json.loads(api_params_raw.replace("'", '"'))
             except json.JSONDecodeError:
@@ -355,7 +379,7 @@ def stream_events(inputs: smi.InputDefinition, event_writer: smi.EventWriter):
 
             # endpoint
             full_url = build_apigee_audit_url(apigee_url_base, apigee_org_name, audit_resource_uri)
-            logger.info("Complete Apigee URL: %s", full_url)
+            logger.info("Complete Apigee URL that will be queried without param is: %s", full_url)
 
             # call
             data = get_data_from_api(
@@ -374,25 +398,27 @@ def stream_events(inputs: smi.InputDefinition, event_writer: smi.EventWriter):
                 apigee_ssl_key_path=apigee_ssl_key_path,
             )
 
+
+            logger.debug("data is: %s", data)
             events = data if isinstance(data, list) else [data]
             count = process_events_with_checkpoint(
-                events=events,
-                event_writer=event_writer,
-                input_item=input_item,
-                sourcetype=sourcetype,
-                timestamp_fields=timestamp_fields,
-                ckpt_mgr=ckpt_mgr,
-                input_key=norm_name,
-                logger=logger,
+                    events=events,
+                    event_writer=event_writer,
+                    input_item=input_item,
+                    sourcetype=sourcetype,
+                    timestamp_fields=timestamp_fields,
+                    ckpt_mgr=ckpt_mgr,
+                    input_key=norm_name,
+                    logger=logger,
             )
 
             log.events_ingested(
-                logger,
-                input_name,
-                sourcetype,
-                count,
-                input_item.get("index"),
-                account=input_item.get("account"),
+                    logger,
+                    input_name,
+                    sourcetype,
+                    count,
+                    input_item.get("index"),
+                    account=input_item.get("account"),
             )
             log.modular_input_end(logger, norm_name)
 
