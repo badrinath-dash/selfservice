@@ -330,7 +330,7 @@
                             "options": {
                                 "range": [
                                     10,
-                                    301
+                                    3601
                                 ]
                             },
                             "help": "Time interval of the data input, in seconds.",
