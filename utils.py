@@ -1,131 +1,197 @@
-import os
-import sys 
-import logging
+#
+# SPDX-FileCopyrightText: 2024 Splunk, Inc.
+# SPDX-License-Identifier: LicenseRef-Splunk-8-2021
+#
+#
+
+"""
+This module has utility functions for fectching account details, checkpointing,
+writng events to splunk, setting loggers, input validations etc.
+"""
+import json
+import os  # noqa: F401
+import os.path as op
+import sys
+import traceback
+
 import requests
-import validators
 
-from os import path as op
-from typing import Dict, Any, Optional
-
-from solnlib import conf_manager, log, utils as soln_utils
+# isort: off
+import splunk.admin as admin
+import import_declare_test  # noqa: F401
+from solnlib import conf_manager, log
 from solnlib.modular_input import checkpointer
-from splunktaucclib.rest_handler.admin_external import AdminExternalValidator
+from splunklib import modularinput as smi
+import datetime
+from solnlib import log
 
-# App / Add-on metadata
-APP_NAME = os.path.basename(os.path.dirname(os.path.dirname(__file__)))
-ADDON_NAME = "Splunk_TA_github"
-CHECKPOINTER = "Splunk_TA_github_checkpointer"
+APP_NAME = __file__.split(op.sep)[-3]
 
-# Logger setup
-_LOGGER = log.Logs().get_logger(ADDON_NAME)
+_LOGGER = log.Logs().get_logger("Splunk_TA_Apigee_utils")
+ADDON_NAME = "Splunk_TA_Apigee"
+CHECKPOINTER = "splunk_ta_apigee_checkpointer"
 
 
-def get_log_level() -> str:
-    """Get Splunk root log level, fallback to DEBUG."""
+def get_log_level(session_key):
+    """
+    This function returns the log level for the addon from configuration file
+    :return: The log level configured for the addon
+    """
+
     try:
-        return log.get_level(log.Logs().get_logger("splunk"))
+        cfm = conf_manager.ConfManager(
+            session_key,
+            APP_NAME,
+            realm="__REST_CREDENTIAL__#{}#configs/conf-splunk_ta_apigee_settings".format(
+                APP_NAME
+            ),
+        )
+        conf = cfm.get_conf("splunk_ta_apigee_settings")
+        logging_details = conf.get("logging")
+        return logging_details["loglevel"]
     except Exception as e:
-        _LOGGER.warning("Failed to get root log level, defaulting to DEBUG: %s", e)
         return "DEBUG"
 
 
-def get_account_details(session_key: str, account_name: str) -> Dict[str, Any]:
-    """Fetch account details securely from Splunk conf manager."""
+def set_logger(session_key, filename):
+    """
+    This function sets up a logger with configured log level.
+    :param filename: Name of the log file
+    :return logger: logger object
+    """
+
+    log_level = get_log_level(session_key)
+    logger = log.Logs().get_logger(filename)
+    logger.setLevel(log_level)
+    return logger
+
+
+def get_proxy_settings(logger, session_key):
+    """
+    This function reads proxy settings if any, otherwise returns None
+    :param session_key: Session key for the particular modular input
+    :return: A dictionary proxy having settings
+    """
+
+    try:
+        settings_cfm = conf_manager.ConfManager(
+            session_key,
+            APP_NAME,
+            realm="__REST_CREDENTIAL__#{}#configs/splunk_ta_apigee_settings".format(
+                APP_NAME
+            ),
+        )
+        splunk_ta_apigee_settings_conf = settings_cfm.get_conf(
+            "splunk_ta_apigee_settings"
+        ).get_all()
+
+        proxy_settings = None
+        proxy_stanza = {}
+        for key, value in splunk_ta_apigee_settings_conf["proxy"].items():
+            proxy_stanza[key] = value
+
+        if int(proxy_stanza.get("proxy_enabled", 0)) == 0:
+            logger.info("Proxy is disabled. Returning None")
+            return proxy_settings
+        proxy_port = proxy_stanza.get("proxy_port")
+        proxy_url = proxy_stanza.get("proxy_url")
+        proxy_type = proxy_stanza.get("proxy_type")
+        proxy_username = proxy_stanza.get("proxy_username", "")
+        proxy_password = proxy_stanza.get("proxy_password", "")
+
+        if proxy_type == "socks5":
+            proxy_type += "h"
+        if proxy_username and proxy_password:
+            proxy_username = requests.compat.quote_plus(proxy_username)
+            proxy_password = requests.compat.quote_plus(proxy_password)
+            proxy_uri = "%s://%s:%s@%s:%s" % (
+                proxy_type,
+                proxy_username,
+                proxy_password,
+                proxy_url,
+                proxy_port,
+            )
+        else:
+            proxy_uri = "%s://%s:%s" % (proxy_type, proxy_url, proxy_port)
+
+        proxy_settings = {"http": proxy_uri, "https": proxy_uri}
+        logger.info("Successfully fetched configured proxy details.")
+        return proxy_settings
+
+    except Exception as e:
+        log.log_configuration_error(
+            logger,
+            e,
+            full_msg=False,
+            msg_before="Failed to fetch proxy details from configuration",
+        )
+        sys.exit(1)
+
+
+
+def get_account_details(logger, session_key, account_name):
+    """
+    Retrieves account details from the Splunk add-on configuration.
+
+    Args:
+        logger (Logger): Logger instance.
+        session_key (str): Splunk session key.
+        account_name (str): Name of the configured account.
+
+    Returns:
+        dict: Dictionary containing relevant account credentials.
+    """
     realm = f"{ADDON_NAME}_account"
     try:
         cfm = conf_manager.ConfManager(
             session_key,
             APP_NAME,
-            realm=realm
+            realm=f"__REST_CREDENTIAL__#{APP_NAME}#configs/conf-splunk_ta_apigee_account"
         )
-        conf = cfm.get_conf(f"{ADDON_NAME}_account", decrypt=True)
-        if account_name not in conf:
-            raise ValueError(f"Account '{account_name}' not found")
-        return dict(conf[account_name].items())
+        account_conf_file = cfm.get_conf("splunk_ta_apigee_account")
+        logger.debug(f"Fetching account details for: {account_name}")
+
+        account_data = account_conf_file.get(account_name)
+        if not account_data:
+            raise KeyError(f"Account '{account_name}' not found.")
+
+        auth_type = account_data.get("auth_type", "basic").lower()
+
+        if auth_type == "basic":
+            return {
+                "auth_type": "basic",
+                "apigee_username": account_data.get("apigee_username"),
+                "apigee_password": account_data.get("apigee_password"),
+                "apigee_ssl_client_cert": account_data.get("apigee_ssl_client_cert"),
+                "apigee_ssl_key": account_data.get("apigee_ssl_key")
+            }
+        elif auth_type == "oauth":
+            return {
+                "auth_type": "oauth",
+                "client_id": account_data.get("client_id"),
+                "client_secret": account_data.get("client_secret"),
+                "apigee_ssl_client_cert": account_data.get("apigee_ssl_client_cert"),
+                "apigee_ssl_key": account_data.get("apigee_ssl_key")
+            }
+        else:
+            raise ValueError(f"Unsupported auth_type: {auth_type}")
+
     except Exception as e:
-        _LOGGER.exception("Failed to retrieve account details: %s", e)
-        raise
-
-
-def get_proxy_settings(session_key: str) -> Dict[str, Any]:
-    """Retrieve Splunk proxy settings securely."""
-    try:
-        cfm = conf_manager.ConfManager(
-            session_key,
-            APP_NAME,
-            realm=f"{ADDON_NAME}_settings"
+        log.log_configuration_error(
+            logger,
+            e,
+            full_msg=False,
+            msg_before=f"Failed to fetch account details for account: {account_name}"
         )
-        conf = cfm.get_conf("settings", decrypt=True)
-        proxy_conf = conf.get("proxy", {})
-        return dict(proxy_conf)
-    except Exception as e:
-        _LOGGER.exception("Failed to fetch proxy settings: %s", e)
-        raise RuntimeError("Could not fetch proxy configuration") from e
-
-
-def mask_secret(secret: Optional[str]) -> str:
-    """Mask sensitive values for logging."""
-    if not secret:
-        return ""
-    return secret[:4] + "****" + secret[-2:]
+        sys.exit("Error while fetching account details. Terminating modular input.")
 
 
 def checkpoint_handler(check_point_key: str, check_point_value: Any, session_key: str) -> None:
     """Store checkpoint in KVStore safely."""
     try:
-        _LOGGER.debug("Updating checkpoint key=%s, value(masked)=%s",
-                      check_point_key, mask_secret(str(check_point_value)))
+        _LOGGER.debug("Updating checkpoint key=%s, value=%s",
+                      check_point_key, str(check_point_value))
         kv_checkpointer = checkpointer.KVStoreCheckpointer(CHECKPOINTER, session_key)
         kv_checkpointer.update(check_point_key, check_point_value)
     except Exception as e:
         _LOGGER.exception("Error while updating checkpoint: %s", e)
-
-
-class ValidateBaseInput(AdminExternalValidator):
-    """Base validator for modular input configs."""
-
-    def _validate_api(self, url: str, headers: Dict[str, str], error_msg: str) -> None:
-        try:
-            resp = requests.get(url, headers=headers, timeout=30, verify=True)
-            if resp.status_code != 200:
-                try:
-                    msg = resp.json().get("message", str(resp.text))
-                except Exception:
-                    msg = resp.text
-                self.put_msg(f"{error_msg}: {msg}")
-                self.put_msg(f"HTTP {resp.status_code}: {resp.reason}")
-        except Exception as e:
-            self.put_msg(f"Validation failed: {str(e)}")
-
-    def validate(self, name: str, value: Any, data: Dict[str, Any]) -> None:
-        raise NotImplementedError("Subclasses must implement validate()")
-
-
-class ValidateAuditInput(ValidateBaseInput):
-    """Validator for audit inputs."""
-
-    def validate(self, name, value, data):
-        org = data.get("org") or data.get("enterprise")
-        token = data.get("token")
-        if not org or not token:
-            self.put_msg("Missing required fields: org/enterprise or token")
-            return
-
-        url = f"https://api.github.com/orgs/{org}/audit-log"
-        headers = {"Authorization": f"Bearer {token}"}
-        self._validate_api(url, headers, "Audit input validation failed")
-
-
-class ValidateUserInput(ValidateBaseInput):
-    """Validator for user inputs."""
-
-    def validate(self, name, value, data):
-        org = data.get("org") or data.get("enterprise")
-        token = data.get("token")
-        if not org or not token:
-            self.put_msg("Missing required fields: org/enterprise or token")
-            return
-
-        url = f"https://api.github.com/orgs/{org}/members"
-        headers = {"Authorization": f"Bearer {token}"}
-        self._validate_api(url, headers, "User input validation failed")
