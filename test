@@ -1,0 +1,82 @@
+def process_events_with_checkpoint(
+    events: List[Dict[str, Any]],
+    event_writer: smi.EventWriter,
+    input_item: Dict[str, Any],
+    sourcetype: str,
+    timestamp_fields: List[str],
+    ckpt_mgr,
+    input_key: str,
+    logger: logging.Logger,
+) -> int:
+    processed = 0
+    latest_ts: Optional[int] = None
+
+    # Collect all audit records with timestamps
+    records_with_timestamps: List[Tuple[Dict[str, Any], int]] = []
+    records_without_timestamps: List[Dict[str, Any]] = []
+
+    for ev in events:
+        audit_records = ev.get("auditRecord", [])
+        logger.debug("Processing %d audit records from response", len(audit_records))
+        
+        for record in audit_records:
+            ts = extract_timestamp_from_event(record, timestamp_fields, logger)
+            if ts:
+                records_with_timestamps.append((record, ts))
+            else:
+                records_without_timestamps.append(record)
+
+    # CLIENT-SIDE SORTING: Sort all records by timestamp
+    records_with_timestamps.sort(key=lambda x: x[1])
+    
+    logger.info("Sorted %d records by timestamp for processing", len(records_with_timestamps))
+
+    # Process sorted records with timestamps
+    for record, ts in records_with_timestamps:
+        try:
+            event_writer.write_event(
+                smi.Event(
+                    data=json.dumps(record, ensure_ascii=False, default=str),
+                    index=input_item.get("index"),
+                    sourcetype=sourcetype,
+                    time=ts // 1000,  # Convert milliseconds to seconds
+                )
+            )
+            processed += 1
+            latest_ts = ts  # Since sorted, this will be the highest timestamp
+            
+            # Update checkpoint every 100 events
+            if processed % 100 == 0:
+                update_checkpoint(ckpt_mgr, input_key, latest_ts, processed, logger)
+                
+        except Exception as ex:
+            logger.error("Failed to write event with timestamp %s: %s", ts, ex)
+
+    # Process records without timestamps (use current time)
+    fallback_now = now_ms()
+    for record in records_without_timestamps:
+        try:
+            event_writer.write_event(
+                smi.Event(
+                    data=json.dumps(record, ensure_ascii=False, default=str),
+                    index=input_item.get("index"),
+                    sourcetype=sourcetype,
+                    # No time specified - Splunk will use current time
+                )
+            )
+            processed += 1
+            # Update latest_ts only if we haven't processed any timestamped events
+            if latest_ts is None:
+                latest_ts = fallback_now
+                
+        except Exception as ex:
+            logger.error("Failed to write event without timestamp: %s", ex)
+
+    # Final checkpoint update with the latest timestamp
+    if latest_ts:
+        update_checkpoint(ckpt_mgr, input_key, latest_ts, processed, logger)
+        logger.info("Final checkpoint updated with timestamp: %s (%s)", 
+                   latest_ts, datetime.fromtimestamp(latest_ts / 1000))
+
+    logger.info("Processed %d total events", processed)
+    return processed
