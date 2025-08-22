@@ -436,9 +436,10 @@ def process_events_with_checkpoint(
 def validate_start_date(start_from: str, logger: logging.Logger) -> bool:
     """
     Validate start_from date to ensure it's not in the future and is properly formatted.
+    Matches UCC configuration which expects YYYY-MM-DD format only.
     
     Args:
-        start_from: Date string to validate
+        start_from: Date string to validate (YYYY-MM-DD format)
         logger: Logger instance for warnings
         
     Returns:
@@ -453,29 +454,346 @@ def validate_start_date(start_from: str, logger: logging.Logger) -> bool:
     start_from = start_from.strip()
     current_time = time.time()
     
+    # First validate the regex pattern (same as UCC config)
+    import re
+    if not re.match(r'^\d{4}-\d{2}-\d{2}
+
+
+def validate_input_config(input_item: Dict[str, Any], logger: logging.Logger) -> None:
+    """
+    Validate input configuration parameters according to UCC schema.
+    
+    Args:
+        input_item: Input configuration dictionary
+        logger: Logger instance
+        
+    Raises:
+        ValueError: If any validation fails
+    """
+    input_name = input_item.get("name", "unknown")
+    
+    # Validate required fields (matching UCC configuration)
+    required_fields = {
+        "account": "Account to use",
+        "apigee_url": "Apigee Base Endpoint", 
+        "apigee_org_name": "Apigee Organization Name",
+        "timestamp_fields": "TimeStamp Field",
+        "api_params": "API Parameter",
+        "audit_resource_uri": "Audit EndPoint"
+    }
+    
+    for field, label in required_fields.items():
+        if not input_item.get(field):
+            raise ValueError(f"Input '{input_name}': Required field '{label}' ({field}) is missing or empty")
+    
+    # Validate start_from date (optional field)
+    start_from = input_item.get("start_from")
+    if start_from:
+        validate_start_date(start_from, logger)
+    
+    # Validate interval (UCC range is 10-301 seconds)
+    interval = input_item.get("interval")
+    if interval:
+        try:
+            interval_int = int(interval)
+            if interval_int < 10 or interval_int > 301:
+                raise ValueError(f"Input '{input_name}': interval must be between 10 and 301 seconds, got: {interval}")
+            if interval_int < 60:
+                logger.warning(f"Input '{input_name}': interval '{interval}' seconds is quite short for API polling")
+        except (ValueError, TypeError):
+            raise ValueError(f"Input '{input_name}': interval must be a valid integer, got: {interval}")
+    
+    # Validate URL format (UCC expects HTTPS only)
+    apigee_url = input_item.get("apigee_url", "")
+    if not apigee_url.startswith("https://"):
+        raise ValueError(f"Input '{input_name}': Apigee Base Endpoint must use HTTPS, got: {apigee_url}")
+    
+    # Validate Organization Name (basic validation)
+    org_name = input_item.get("apigee_org_name", "").strip()
+    if org_name and not org_name.replace("-", "").replace("_", "").isalnum():
+        raise ValueError(f"Input '{input_name}': Organization name should contain only letters, numbers, hyphens, and underscores")
+    
+    # Validate timestamp_fields format (comma-separated field names)
+    timestamp_fields = input_item.get("timestamp_fields", "")
+    if timestamp_fields:
+        fields = [f.strip() for f in timestamp_fields.split(",")]
+        invalid_fields = []
+        for field in fields:
+            if not field:
+                continue
+            # Allow alphanumeric, dots, and underscores for JSON field paths
+            if not all(c.isalnum() or c in "._-" for c in field):
+                invalid_fields.append(field)
+        
+        if invalid_fields:
+            raise ValueError(
+                f"Input '{input_name}': Invalid characters in TimeStamp Field. "
+                f"Only letters, numbers, dots, hyphens, and underscores allowed. "
+                f"Invalid fields: {invalid_fields}"
+            )
+    
+    # Validate api_params JSON format 
+    api_params = input_item.get("api_params", "{}")
+    if api_params and api_params.strip():
+        try:
+            parsed_params = json.loads(api_params)
+            # Additional validation for common API parameters
+            if isinstance(parsed_params, dict):
+                # Check for common typos in default value
+                if "softOrder" in parsed_params:
+                    logger.warning(f"Input '{input_name}': Did you mean 'sortOrder' instead of 'softOrder'?")
+                
+                # Validate limit parameter if present
+                if "limit" in parsed_params:
+                    try:
+                        limit_val = int(parsed_params["limit"])
+                        if limit_val <= 0 or limit_val > 10000:
+                            raise ValueError(f"Input '{input_name}': API limit should be between 1 and 10000")
+                    except (ValueError, TypeError):
+                        raise ValueError(f"Input '{input_name}': API limit must be a valid integer")
+            else:
+                raise ValueError(f"Input '{input_name}': API Parameter must be a JSON object (dictionary)")
+                
+        except json.JSONDecodeError as e:
+            raise ValueError(
+                f"Input '{input_name}': API Parameter must be valid JSON. "
+                f"Error: {e}. Got: {api_params}"
+            )
+    
+    # Validate audit_resource_uri (should match UCC dropdown values)
+    valid_endpoints = ["/", "/apiproducts", "/apis", "/developers", "/sharedflows", "/users"]
+    audit_uri = input_item.get("audit_resource_uri")
+    if audit_uri and audit_uri not in valid_endpoints:
+        raise ValueError(
+            f"Input '{input_name}': Invalid Audit EndPoint '{audit_uri}'. "
+            f"Valid options: {', '.join(valid_endpoints)}"
+        )
+
+
+def validate_input(definition: smi.ValidationDefinition):
+    """
+    Splunk modular input validation function.
+    Called by Splunk before saving input configuration.
+    """
     try:
-        # Parse the date string
+        # Get the input configuration from the definition
+        for input_name, params in definition.inputs.items():
+            logger = logger_for_input(input_name.split("/")[-1])
+            
+            # Convert parameters to dictionary format
+            input_dict = {param.name: param.value for param in params}
+            input_dict["name"] = input_name
+            
+            # Validate the configuration
+            validate_input_config(input_dict, logger)
+            
+            logger.info(f"Input validation passed for: {input_name}")
+            
+    except ValueError as e:
+        # Splunk expects ValidationError to be raised
+        raise ValueError(str(e))
+    except Exception as e:
+        # Catch any unexpected errors
+        raise ValueError(f"Validation failed with unexpected error: {e}")
+
+
+def stream_events(inputs: smi.InputDefinition, event_writer: smi.EventWriter):
+    """
+    Enhanced stream_events with checkpoint support.
+    
+    New configuration options:
+    - timestamp_fields: Comma-separated list of JSON fields to use for timestamps
+    - api_expand: Custom expand parameter (defaults to "true")
+    - api_params: Additional API parameters as JSON string
+    """
+    for input_name, input_item in inputs.inputs.items():
+        normalized_input_name = input_name.split("/")[-1]
+        logger = logger_for_input(normalized_input_name)
+        
+        # Initialize checkpoint manager
+        ckpt_mgr = None
+
+        try:
+            session_key = inputs.metadata["session_key"]
+
+            # Set up logging
+            log_level = conf_manager.get_log_level(
+                logger=logger,
+                session_key=session_key,
+                app_name=ADDON_NAME,
+                conf_name="splunk_ta_apigee_settings",
+            )
+            logger.setLevel(log_level)
+
+            log.modular_input_start(logger, normalized_input_name)
+
+            # Initialize checkpoint manager
+            ckpt_mgr = get_checkpoint_manager(session_key, normalized_input_name)
+
+            # Read input & account configuration
+            account_name = input_item.get("account")
+            account_details = get_account_details(logger, session_key, account_name)
+
+            apigee_username = account_details.get("apigee_username")
+            apigee_password = account_details.get("apigee_password")
+
+            # Certificate configuration
+            apigee_ssl_client_cert_path = account_details.get("apigee_ssl_client_cert_path")
+            apigee_ssl_key_path = account_details.get("apigee_ssl_key_path")
+            apigee_ssl_client_cert_pem = account_details.get("apigee_ssl_client_cert")
+            apigee_ssl_key_pem = account_details.get("apigee_ssl_key")
+
+            # Input configuration with validation
+            apigee_url_endpoint = input_item.get("apigee_url")
+            apigee_org_name = input_item.get("apigee_org_name")
+            audit_resource_uri = input_item.get("audit_resource_uri", "/")
+            start_from = input_item.get("start_from")
+            interval = input_item.get("interval")
+            sourcetype = input_item.get("sourcetype") or "apigee:audit"
+
+            # Build complete Apigee audit URL
+            # Remove trailing slash from base URL and leading slash from audit URI if present
+            base_url = apigee_url_endpoint.rstrip("/")
+            audit_path = audit_resource_uri.lstrip("/") if audit_resource_uri != "/" else ""
+            
+            if audit_path:
+                complete_apigee_url = f"{base_url}/v1/organizations/{apigee_org_name}/audits/{audit_path}"
+            else:
+                complete_apigee_url = f"{base_url}/v1/organizations/{apigee_org_name}/audits"
+
+            logger.info(f"Complete Apigee URL: {complete_apigee_url}")
+
+            # Validate input configuration
+            try:
+                validate_input_config(input_item, logger)
+            except ValueError as ve:
+                logger.error(f"Input configuration validation failed: {ve}")
+                raise ve
+
+            # NEW: Checkpoint configuration (matching UCC field names)
+            timestamp_fields_str = input_item.get("timestamp_fields", "timeStamp")  # UCC default
+            timestamp_fields = [field.strip() for field in timestamp_fields_str.split(",")]
+            
+            # NEW: API parameter configuration (matching UCC field name)
+            api_params_str = input_item.get("api_params", "{'limit':'1000','sortOrder':'asc'}")
+            
+            try:
+                # Fix common JSON format issues in the default value
+                cleaned_params = api_params_str.replace("'", '"')  # Replace single quotes with double quotes
+                custom_api_params = json.loads(cleaned_params)
+            except json.JSONDecodeError:
+                logger.warning(f"Invalid JSON in API Parameter: {api_params_str}, using defaults")
+                custom_api_params = {"limit": "1000", "sortOrder": "asc"}
+            
+            # Build final API parameters (no default expand since it's in custom params)
+            api_params = custom_api_params
+
+            # Settings configuration
+            cm = conf_manager.ConfManager(session_key, ADDON_NAME)
+            settings_conf = cm.get_conf("splunk_ta_apigee_settings")
+            settings = {}
+            try:
+                settings = settings_conf.get("general")
+            except Exception:
+                logger.debug("No [general] stanza in splunk_ta_apigee_settings; using defaults.")
+
+            validate_ssl = str(settings.get("validate_ssl", "true")).lower() != "false"
+
+            # Authentication and proxy setup
+            auth = HTTPBasicAuth(str(apigee_username), str(apigee_password)) if apigee_username and apigee_password else None
+            proxy_settings = get_proxy_settings(logger, session_key)
+
+            # Time window calculation with checkpoint support
+            default_start_time = get_start_time_ms(start_from)
+            checkpoint_start_time = get_last_checkpoint_time(
+                ckpt_mgr, normalized_input_name, default_start_time, logger
+            )
+            
+            # Use checkpoint time if it's more recent than configured start_from
+            api_start_time = max(checkpoint_start_time, default_start_time)
+            api_end_time = now_ms()
+
+            logger.info(f"Fetching data from {datetime.fromtimestamp(api_start_time/1000)} to {datetime.fromtimestamp(api_end_time/1000)}")
+
+            # Fetch data from API
+            data = get_data_from_api(
+                logger=logger,
+                account_name=account_name,
+                apigee_url_endpoint=complete_apigee_url,  # Use complete URL
+                auth=auth,
+                api_start_time_ms=api_start_time,
+                api_end_time_ms=api_end_time,
+                proxy_settings=proxy_settings,
+                validate_ssl=validate_ssl,
+                api_params=api_params,
+                apigee_ssl_client_cert_pem=apigee_ssl_client_cert_pem,
+                apigee_ssl_key_pem=apigee_ssl_key_pem,
+                apigee_ssl_client_cert_path=apigee_ssl_client_cert_path,
+                apigee_ssl_key_path=apigee_ssl_key_path,
+            )
+
+            # Process events with checkpoint management
+            events = data if isinstance(data, list) else [data]
+            
+            events_count = process_events_with_checkpoint(
+                events=events,
+                event_writer=event_writer,
+                input_item=input_item,
+                sourcetype=sourcetype,
+                timestamp_fields=timestamp_fields,
+                ckpt_mgr=ckpt_mgr,
+                input_name=normalized_input_name,
+                logger=logger
+            )
+
+            log.events_ingested(
+                logger,
+                input_name,
+                sourcetype,
+                events_count,
+                input_item.get("index"),
+                account=input_item.get("account"),
+            )
+
+            log.modular_input_end(logger, normalized_input_name)
+
+        except Exception as e:
+            log.log_exception(
+                logger,
+                e,
+                "apigee_ingest_error",
+                msg_before=f"Exception while ingesting data for input={normalized_input_name}: ",
+            )
+, start_from):
+        raise ValueError(
+            f"Date must be in YYYY-MM-DD format. Got: '{start_from}'. "
+            f"Example: '2024-08-21'"
+        )
+    
+    try:
+        # Parse the date string (only YYYY-MM-DD format supported)
         parsed_time_ms = _to_epoch_ms_from_datestr(start_from)
         parsed_time_sec = parsed_time_ms / 1000
         
-        # Check if date is in the future (with 1 minute tolerance for clock skew)
-        tolerance_sec = 60  # 1 minute
+        # Check if date is in the future (with 1 day tolerance since we only have date, not time)
+        # Set time to end of day for comparison
+        tolerance_sec = 24 * 3600  # 1 day tolerance
         if parsed_time_sec > (current_time + tolerance_sec):
-            future_date = datetime.fromtimestamp(parsed_time_sec).strftime("%Y-%m-%d %H:%M:%S")
-            current_date = datetime.fromtimestamp(current_time).strftime("%Y-%m-%d %H:%M:%S")
+            future_date = datetime.fromtimestamp(parsed_time_sec).strftime("%Y-%m-%d")
+            current_date = datetime.fromtimestamp(current_time).strftime("%Y-%m-%d")
             raise ValueError(
-                f"start_from date '{start_from}' ({future_date}) cannot be in the future. "
-                f"Current time: {current_date}"
+                f"Start date '{start_from}' cannot be in the future. "
+                f"Current date: {current_date}"
             )
         
-        # Check if date is too far in the past (optional - prevents accidental large data pulls)
+        # Check if date is too far in the past (prevents accidental large data pulls)
         max_days_back = 365 * 2  # 2 years
         earliest_allowed = current_time - (max_days_back * 24 * 3600)
         if parsed_time_sec < earliest_allowed:
             earliest_date = datetime.fromtimestamp(earliest_allowed).strftime("%Y-%m-%d")
             raise ValueError(
-                f"start_from date '{start_from}' is too far in the past. "
-                f"Maximum allowed: {max_days_back} days back ({earliest_date})"
+                f"Start date '{start_from}' is too far in the past. "
+                f"Maximum allowed: {max_days_back} days ({earliest_date})"
             )
         
         logger.debug(f"start_from validation passed: {start_from} -> {datetime.fromtimestamp(parsed_time_sec)}")
@@ -483,14 +801,13 @@ def validate_start_date(start_from: str, logger: logging.Logger) -> bool:
         
     except ValueError as e:
         # Re-raise validation errors with more context
-        if "start_from date" in str(e):
+        if "Start date" in str(e) or "Maximum allowed" in str(e):
             raise e
         else:
-            # This is a parsing error
+            # This is a parsing error (shouldn't happen if regex passed)
             raise ValueError(
                 f"Invalid date format for start_from: '{start_from}'. "
-                f"Supported formats: YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS. "
-                f"Examples: '2024-01-15', '2024-01-15T10:30:00'"
+                f"Date must be in YYYY-MM-DD format. Example: '2024-08-21'"
             )
 
 
