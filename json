@@ -1,0 +1,530 @@
+{
+    "pages": {
+        "configuration": {
+            "tabs": [
+                {
+                    "name": "account",
+                    "table": {
+                        "actions": [
+                            "edit",
+                            "delete",
+                            "clone"
+                        ],
+                        "header": [
+                            {
+                                "label": "Name",
+                                "field": "name"
+                            },
+                            {
+                                "label": "Auth Type",
+                                "field": "auth_type"
+                            }
+                        ]
+                    },
+                    "entity": [
+                        {
+                            "type": "text",
+                            "label": "Name",
+                            "validators": [
+                                {
+                                    "type": "regex",
+                                    "errorMsg": "Account Name must begin with a letter and consist exclusively of alphanumeric characters and underscores.",
+                                    "pattern": "^[a-zA-Z]\\w*$"
+                                },
+                                {
+                                    "type": "string",
+                                    "errorMsg": "Length of input name should be between 1 and 100",
+                                    "minLength": 1,
+                                    "maxLength": 100
+                                }
+                            ],
+                            "field": "name",
+                            "help": "A unique name for the account.",
+                            "required": true
+                        },
+                        {
+                            "type": "oauth",
+                            "field": "oauth",
+                            "label": "Not used",
+                            "options": {
+                                "auth_type": [
+                                    "basic",
+                                    "oauth"
+                                ],
+                                "basic": [
+                                    {
+                                        "oauth_field": "apigee_username",
+                                        "label": "User Name",
+                                        "field": "apigee_username",
+                                        "help": "Enter Account name.",
+                                        "required": true
+                                    },
+                                    {
+                                        "oauth_field": "apigee_password",
+                                        "label": "Password",
+                                        "field": "apigee_password",
+                                        "encrypted": true,
+                                        "help": "Enter Password for the account.",
+                                        "required": true
+                                    }
+                                ],
+                                "oauth": [
+                                    {
+                                        "oauth_field": "client_id",
+                                        "label": "Client Id",
+                                        "field": "client_id",
+                                        "help": "Enter Client Id."
+                                    },
+                                    {
+                                        "oauth_field": "client_secret",
+                                        "label": "Client Secret",
+                                        "field": "client_secret",
+                                        "encrypted": true,
+                                        "help": "Enter Client Secret."
+                                    },
+                                    {
+                                        "oauth_field": "redirect_url",
+                                        "label": "Redirect url",
+                                        "field": "redirect_url",
+                                        "help": "Please add this redirect URL in your app."
+                                    },
+                                    {
+                                        "oauth_field": "scope",
+                                        "label": "Scope",
+                                        "field": "scope",
+                                        "help": "Enter the scope for the authorization code with ',' separating each scope.",
+                                        "required": false
+                                    },
+                                    {
+                                        "oauth_field": "endpoint",
+                                        "label": "Endpoint",
+                                        "field": "endpoint",
+                                        "help": "Enter Endpoint"
+                                    }
+                                ],
+                                "auth_label": "Auth Type",
+                                "oauth_popup_width": 600,
+                                "oauth_popup_height": 600,
+                                "oauth_timeout": 180,
+                                "auth_code_endpoint": "/services/oauth2/authorize",
+                                "access_token_endpoint": "/services/oauth2/token",
+                                "auth_endpoint_token_access_type": "offline"
+                            }
+                        },
+                        {
+                            "type": "checkbox",
+                            "label": "Enable MASSL",
+                            "field": "apigee_massl_setting",
+                            "help": "If the APIGEE URL is configured with MASSL then, please enable this setting",
+                            "modifyFieldsOnValue": [
+                                {
+                                    "fieldValue": 1,
+                                    "fieldsToModify": [
+                                        {
+                                            "fieldId": "apigee_ssl_client_cert",
+                                            "display": true
+                                        },
+                                        {
+                                            "fieldId": "apigee_ssl_key",
+                                            "display": true
+                                        }
+                                    ]
+                                },
+                                {
+                                    "fieldValue": 0,
+                                    "fieldsToModify": [
+                                        {
+                                            "fieldId": "apigee_ssl_client_cert",
+                                            "display": false
+                                        },
+                                        {
+                                            "fieldId": "apigee_ssl_key",
+                                            "display": false
+                                        }
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            "type": "file",
+                            "label": "SSL Client Cert",
+                            "field": "apigee_ssl_client_cert",
+                            "help": "Upload SSL cert in pem format",
+                            "required": false,
+                            "options": {
+                                "display": false,
+                                "fileSupportMessage": "Support message",
+                                "supportedFileTypes": [
+                                    "pem"
+                                ],
+                                "maxFileSize": 100,
+                                "useBase64Encoding": false
+                            }
+                        },
+                        {
+                            "type": "file",
+                            "label": "SSL Key File",
+                            "field": "apigee_ssl_key",
+                            "help": "Upload SSL Key file in .key format",
+                            "required": false,
+                            "options": {
+                                "display": false,
+                                "fileSupportMessage": "Support message",
+                                "supportedFileTypes": [
+                                    "key"
+                                ],
+                                "maxFileSize": 100,
+                                "useBase64Encoding": false
+                            }
+                        }
+                    ],
+                    "title": "Apigee Accounts"
+                },
+                {
+                    "name": "proxy",
+                    "warning": {
+                        "config": {
+                            "message": "Please make sure the the connectivity to Proxy exist from the add-on installed hosts"
+                        }
+                    },
+                    "entity": [
+                        {
+                            "type": "checkbox",
+                            "label": "Enable",
+                            "field": "proxy_enabled"
+                        },
+                        {
+                            "type": "singleSelect",
+                            "label": "Proxy Type",
+                            "options": {
+                                "disableSearch": true,
+                                "autoCompleteFields": [
+                                    {
+                                        "value": "http",
+                                        "label": "http"
+                                    },
+                                    {
+                                        "value": "https",
+                                        "label": "https"
+                                    },
+                                    {
+                                        "value": "socks4",
+                                        "label": "socks4"
+                                    },
+                                    {
+                                        "value": "socks5",
+                                        "label": "socks5"
+                                    }
+                                ]
+                            },
+                            "defaultValue": "http",
+                            "field": "proxy_type"
+                        },
+                        {
+                            "type": "text",
+                            "label": "Host",
+                            "validators": [
+                                {
+                                    "type": "string",
+                                    "errorMsg": "Max host length is 4096",
+                                    "minLength": 0,
+                                    "maxLength": 4096
+                                },
+                                {
+                                    "type": "regex",
+                                    "errorMsg": "Proxy Host should not have special characters",
+                                    "pattern": "^[a-zA-Z\\.]\\w*"
+                                }
+                            ],
+                            "field": "proxy_url"
+                        },
+                        {
+                            "type": "text",
+                            "label": "Port",
+                            "validators": [
+                                {
+                                    "type": "number",
+                                    "range": [
+                                        1,
+                                        65535
+                                    ]
+                                }
+                            ],
+                            "field": "proxy_port"
+                        },
+                        {
+                            "type": "text",
+                            "label": "Username",
+                            "validators": [
+                                {
+                                    "type": "string",
+                                    "errorMsg": "Max length of username is 50",
+                                    "minLength": 0,
+                                    "maxLength": 50
+                                }
+                            ],
+                            "field": "proxy_username"
+                        },
+                        {
+                            "type": "text",
+                            "label": "Password",
+                            "validators": [
+                                {
+                                    "type": "string",
+                                    "errorMsg": "Max length of password is 8192",
+                                    "minLength": 0,
+                                    "maxLength": 8192
+                                }
+                            ],
+                            "encrypted": true,
+                            "field": "proxy_password"
+                        },
+                        {
+                            "type": "checkbox",
+                            "label": "DNS resolution",
+                            "field": "proxy_rdns"
+                        }
+                    ],
+                    "options": {
+                        "saveValidator": "function(formData) { if(!formData.proxy_enabled || formData.proxy_enabled === '0') {return true; } if(!formData.proxy_url) { return 'Proxy Host can not be empty'; } if(!formData.proxy_port) { return 'Proxy Port can not be empty'; } return true; }"
+                    },
+                    "title": "Proxy"
+                },
+                {
+                    "type": "loggingTab"
+                }
+            ],
+            "title": "Configuration",
+            "description": "Set up your add-on"
+        },
+        "inputs": {
+            "services": [
+                {
+                    "name": "apigee_audit_input",
+                    "entity": [
+                        {
+                            "type": "text",
+                            "label": "Name",
+                            "validators": [
+                                {
+                                    "type": "regex",
+                                    "errorMsg": "Input Name must begin with a letter and consist exclusively of alphanumeric characters and underscores.",
+                                    "pattern": "^[a-zA-Z]\\w*$"
+                                },
+                                {
+                                    "type": "string",
+                                    "errorMsg": "Length of input name should be between 1 and 100",
+                                    "minLength": 1,
+                                    "maxLength": 100
+                                }
+                            ],
+                            "field": "name",
+                            "help": "A unique name for the data input.",
+                            "required": true
+                        },
+                        {
+                            "type": "interval",
+                            "label": "Interval",
+                            "defaultValue": "300",
+                            "field": "interval",
+                            "options": {
+                                "range": [
+                                    10,
+                                    301
+                                ]
+                            },
+                            "help": "Time interval of the data input, in seconds.",
+                            "required": true
+                        },
+                        {
+                            "type": "index",
+                            "field": "index",
+                            "label": "Index",
+                            "required": true
+                        },
+                        {
+                            "type": "singleSelect",
+                            "label": "Account to use",
+                            "options": {
+                                "referenceName": "account"
+                            },
+                            "help": "Account to use for this input.",
+                            "field": "account",
+                            "required": true
+                        },
+                        {
+                            "type": "text",
+                            "label": "Apigee Base Endpoint",
+                            "field": "apigee_url",
+                            "help": "Enter the URL For APIGEE Endpoint e.g. https://api.enterprise.apigee.com/v1",
+                            "validators": [
+                                {
+                                    "type": "url"
+                                },
+                                {
+                                    "type": "regex",
+                                    "errorMsg": "HTTPS only",
+                                    "pattern": "^https://"
+                                }
+                            ],
+                            "required": true
+                        },
+                        {
+                            "type": "text",
+                            "label": "Apigee Organization Name",
+                            "field": "apigee_org_name",
+                            "help": "Enter the name of the Organization in APIGEE to fetch Audit data",
+                            "required": true
+                        },
+                        {
+                            "type": "text",
+                            "label": "TimeStamp Field",
+                            "field": "timestamp_fields",
+                            "help": "Enter the name of the timestamp field which SPLUNK will use to process event timeStamp e.g. timeStamp or created_at etc..",
+                            "required": true,
+                            "default": "timeStamp"
+                        },
+                        {
+                            "type": "text",
+                            "label": "API Parameter",
+                            "field": "api_params",
+                            "help": "API Params to use for feteching data from APIGEE API, Should be a valid JSON",
+                            "required": true,
+                            "default": "{'limit':'1000','softOrder':'asc'}"
+                        },
+                        {
+                            "type": "singleSelect",
+                            "label": "Audit EndPoint",
+                            "options": {
+                                "disableSearch": true,
+                                "autoCompleteFields": [
+                                    {
+                                        "value": "/",
+                                        "label": "BaseOrganization"
+                                    },
+                                    {
+                                        "value": "/apiproducts",
+                                        "label": "ApiProducts"
+                                    },
+                                    {
+                                        "value": "/apis",
+                                        "label": "Apis"
+                                    },
+                                    {
+                                        "value": "/developers",
+                                        "label": "Developers"
+                                    },
+                                    {
+                                        "value": "/sharedflows",
+                                        "label": "SharedFlows"
+                                    },
+                                    {
+                                        "value": "/users",
+                                        "label": "Users"
+                                    }
+                                ],
+                                "display": true
+                            },
+                            "help": "Select the Audit Endpoint for which Audit logs needs to be extracted, default is Base which gets organization Audit Entries.",
+                            "field": "audit_resource_uri",
+                            "defaultValue": "/",
+                            "required": true
+                        },
+                        {
+                            "field": "apigee_audit_help_link",
+                            "label": "",
+                            "type": "helpLink",
+                            "options": {
+                                "text": "Help Link",
+                                "link": "https://apidocs.apigee.com/docs/audits/1/overview"
+                            }
+                        },
+                        {
+                            "label": "Start From",
+                            "field": "start_from",
+                            "type": "text",
+                            "required": false,
+                            "help": "Enter the start date in YYYY-MM-DD format",
+                            "validators": [
+                                {
+                                    "type": "regex",
+                                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                                    "errorMsg": "Date must be in YYYY-MM-DD format"
+                                }
+                            ]
+                        }
+                    ],
+                    "inputHelperModule": "apigee_audit_input_helper",
+                    "title": "Apigee Audit Input"
+                }
+            ],
+            "title": "Inputs",
+            "description": "Manage your data inputs",
+            "table": {
+                "actions": [
+                    "edit",
+                    "delete",
+                    "clone"
+                ],
+                "header": [
+                    {
+                        "label": "Name",
+                        "field": "name"
+                    },
+                    {
+                        "label": "Interval",
+                        "field": "interval"
+                    },
+                    {
+                        "label": "Index",
+                        "field": "index"
+                    },
+                    {
+                        "label": "Status",
+                        "field": "disabled"
+                    }
+                ],
+                "moreInfo": [
+                    {
+                        "label": "Name",
+                        "field": "name"
+                    },
+                    {
+                        "label": "Interval",
+                        "field": "interval"
+                    },
+                    {
+                        "label": "Index",
+                        "field": "index"
+                    },
+                    {
+                        "label": "Status",
+                        "field": "disabled",
+                        "mapping": {
+                            "true": "Inactive",
+                            "false": "Active"
+                        }
+                    }
+                ]
+            }
+        },
+        "dashboard": {
+            "panels": [
+                {
+                    "name": "default"
+                }
+            ]
+        }
+    },
+    "meta": {
+        "name": "splunk_TA_Apigee",
+        "restRoot": "splunk_TA_Apigee",
+        "version": "0.0.0+4a36cb8",
+        "displayName": "Splunk Add-on for APIGEE",
+        "schemaVersion": "0.0.9",
+        "supportedThemes": [
+            "light",
+            "dark"
+        ]
+    }
+}
