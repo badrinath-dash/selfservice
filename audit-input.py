@@ -165,6 +165,23 @@ def build_apigee_audit_url(base_url: str, org: str, audit_path: str) -> str:
     return f"{base}/audits/organizations/{org}/"
 
 
+def build_source_name(apigee_org:str, audit_endpoint:str) -> str:
+    """ Build consistent sourcenames for Apigee Audit data.
+
+    Args: 
+      apigee_org: Organization Name (e.g. "myorg")
+      audit_endpoint: Endpoint Path (e.g, "/developers", "/users", "/apiproducts")
+
+    Returns:
+    Source name like "apigee:myorg:developers"
+    """
+    endpoint_clean = audit_endpoint.strip('/')
+    if not endpoint_clean or endpoint_clean == '/':
+       endpoint_clean = "base"
+    else:
+        endpoint_clean = endpoint_clean.replace('/',":")
+
+    return f"apigee:{apigee_org}:{endpoint_clean}"
 
 
 
@@ -181,7 +198,7 @@ def get_data_from_api(
     apigee_ssl_client_cert_pem: Optional[str] = None,
     apigee_ssl_key_pem: Optional[str] = None,
     apigee_ssl_client_cert_path: Optional[str] = None,
-    apigee_ssl_key_path: Optional[str] = None,
+    apigee_ssl_key_path: Optional[str] = None
 ) -> Any:
     logger.info("Calling Apigee API endpoint: %s", apigee_url_endpoint)
 
@@ -230,6 +247,7 @@ def process_events_with_checkpoint(
     event_writer: smi.EventWriter,
     input_item: Dict[str, Any],
     sourcetype: str,
+    source:str,
     timestamp_fields: List[str],
     ckpt_mgr,
     input_key: str,
@@ -238,31 +256,33 @@ def process_events_with_checkpoint(
     processed = 0
     latest_ts: Optional[int] = None
 
-    with_ts: List[Tuple[Dict[str, Any], int]] = []
-    without_ts: List[Dict[str, Any]] = []
+    record_with_ts: List[Tuple[Dict[str, Any], int]] = []
+    record_without_ts: List[Dict[str, Any]] = []
 
     for ev in events:
         audit_records = ev.get("auditRecord", [])
-        logger.debug("audit_records is : %s", audit_records)
         for record in audit_records:
             ts = extract_timestamp_from_event(record, timestamp_fields, logger)
             if ts:
-                logger.debug("ts is : %s", ts)
-                with_ts.append((record, ts))
+                record_with_ts.append((record, ts))
             else:
-                logger.debug("ts is : %s", ts)
-                without_ts.append(record)
+                record_without_ts.append(record)
 
-    with_ts.sort(key=lambda x: x[1])
+    record_with_ts.sort(key=lambda x: x[1])
+    logger.info("Sorted %d records by timestamp for processing", len(record_with_ts))
 
-    for ev, ts in with_ts:
+    for ev, ts in record_with_ts:
         try:
+            ev_clean = dict(ev)  # shallow copy
+            ev_clean.pop("ts", None)  # remove 'ts' if present
+
             event_writer.write_event(
                 smi.Event(
-                    data=json.dumps(ev, ensure_ascii=False, default=str),
+                    data=json.dumps(ev_clean, ensure_ascii=False, default=str),
                     index=input_item.get("index"),
                     sourcetype=sourcetype,
                     time=ts // 1000,
+                    source=source,
                 )
             )
             processed += 1
@@ -273,7 +293,7 @@ def process_events_with_checkpoint(
             logger.error("Failed to write event: %s", ex)
 
     fallback_now = now_ms()
-    for ev in without_ts:
+    for ev in record_without_ts:
         try:
             event_writer.write_event(
                 smi.Event(
@@ -380,7 +400,13 @@ def stream_events(inputs: smi.InputDefinition, event_writer: smi.EventWriter):
             # endpoint
             full_url = build_apigee_audit_url(apigee_url_base, apigee_org_name, audit_resource_uri)
             logger.info("Complete Apigee URL that will be queried without param is: %s", full_url)
+            source_name = build_source_name(apigee_org_name,audit_resource_uri)
 
+            
+
+            logger.info("Using Fields OrgName :%s and ResourceURI :%s for building the source name", apigee_org_name,audit_resource_uri)
+
+            logger.info("Source name which will be used for writing data is : %s", source_name)
             # call
             data = get_data_from_api(
                 logger=logger,
@@ -399,13 +425,14 @@ def stream_events(inputs: smi.InputDefinition, event_writer: smi.EventWriter):
             )
 
 
-            logger.debug("data is: %s", data)
+            
             events = data if isinstance(data, list) else [data]
             count = process_events_with_checkpoint(
                     events=events,
                     event_writer=event_writer,
                     input_item=input_item,
                     sourcetype=sourcetype,
+                    source=source_name,
                     timestamp_fields=timestamp_fields,
                     ckpt_mgr=ckpt_mgr,
                     input_key=norm_name,
