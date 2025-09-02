@@ -1,0 +1,85 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Splunk ASG with Persistent ENI + EBS
+
+Parameters:
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+  SecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+
+Resources:
+  SplunkENI:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !Ref SubnetId
+      GroupSet:
+        - !Ref SecurityGroupId
+      Tags:
+        - Key: Name
+          Value: SplunkENI
+
+  SplunkEBSVolume:
+    Type: AWS::EC2::Volume
+    Properties:
+      AvailabilityZone: !Select [0, !GetAZs '']
+      Size: 200
+      VolumeType: gp3
+      Tags:
+        - Key: Name
+          Value: SplunkData
+
+  SplunkLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        InstanceType: m5.xlarge
+        ImageId: ami-xxxxxxxx # Splunk-ready AMI
+        KeyName: !Ref KeyName
+        NetworkInterfaces:
+          - DeviceIndex: 0
+            NetworkInterfaceId: !Ref SplunkENI
+        BlockDeviceMappings:
+          - DeviceName: /dev/xvda
+            Ebs:
+              VolumeSize: 20
+              VolumeType: gp3
+        UserData:
+          Fn::Base64: !Sub |
+            #!/bin/bash
+            yum update -y
+            # Wait for EBS volume to be available
+            VOL_ID=${SplunkEBSVolume}
+            AVAIL_ZONE=$(curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone)
+            INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
+
+            aws ec2 attach-volume --volume-id $VOL_ID --instance-id $INSTANCE_ID --device /dev/xvdf --region ${AWS::Region} || true
+
+            # Mount Splunk data
+            mkfs -t xfs /dev/xvdf || true
+            mkdir -p /splunk-data
+            mount /dev/xvdf /splunk-data
+            echo "/dev/xvdf /splunk-data xfs defaults,nofail 0 2" >> /etc/fstab
+
+            # Install Splunk
+            wget -O /tmp/splunk.rpm 'https://download.splunk.com/products/splunk/releases/9.2.0/linux/splunk-9.2.0.rpm'
+            rpm -i /tmp/splunk.rpm
+            /opt/splunk/bin/splunk start --accept-license --answer-yes --no-prompt
+            /opt/splunk/bin/splunk enable boot-start
+
+  SplunkASG:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      MinSize: 1
+      MaxSize: 1
+      DesiredCapacity: 1
+      VPCZoneIdentifier:
+        - !Ref SubnetId
+      LaunchTemplate:
+        LaunchTemplateId: !Ref SplunkLaunchTemplate
+        Version: !GetAtt SplunkLaunchTemplate.LatestVersionNumber
+      Tags:
+        - Key: Name
+          Value: SplunkInstance
+          PropagateAtLaunch: true
