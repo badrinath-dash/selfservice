@@ -1,0 +1,181 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Splunk single-instance ASG with fixed ENI
+
+Parameters:
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+  SecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+  SplunkAMI:
+    Type: AWS::EC2::Image::Id
+    Description: AMI with Splunk pre-installed
+
+Resources:
+  # --- Fixed ENI ---
+  SplunkENI:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !Ref SubnetId
+      GroupSet:
+        - !Ref SecurityGroupId
+      Tags:
+        - Key: Name
+          Value: SplunkENI
+
+  # --- IAM Role for EC2 ---
+  SplunkInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: SplunkEC2Policy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ec2:AttachVolume
+                  - ec2:DescribeVolumes
+                  - ec2:DescribeInstances
+                Resource: "*"
+
+  SplunkInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref SplunkInstanceRole
+
+  # --- IAM Role for Lambda ---
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: LambdaENIAttach
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ec2:AttachNetworkInterface
+                  - ec2:DetachNetworkInterface
+                  - ec2:DescribeNetworkInterfaces
+                  - ec2:DescribeInstances
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+
+  # --- Lambda Function to attach ENI ---
+  AttachENILambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: python3.9
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 60
+      Environment:
+        Variables:
+          ENI_ID: !Ref SplunkENI
+      Code:
+        ZipFile: |
+          import boto3, os, time
+          ec2 = boto3.client('ec2')
+
+          def lambda_handler(event, context):
+              eni_id = os.environ['ENI_ID']
+              instance_id = event['detail']['EC2InstanceId']
+
+              # Detach if attached elsewhere
+              eni = ec2.describe_network_interfaces(NetworkInterfaceIds=[eni_id])['NetworkInterfaces'][0]
+              if eni.get('Attachment'):
+                  ec2.detach_network_interface(
+                      AttachmentId=eni['Attachment']['AttachmentId'],
+                      Force=True
+                  )
+                  # small wait to ensure detach
+                  time.sleep(5)
+
+              # Attach to new instance as secondary
+              ec2.attach_network_interface(
+                  NetworkInterfaceId=eni_id,
+                  InstanceId=instance_id,
+                  DeviceIndex=1
+              )
+              return {"status": "attached", "eni": eni_id, "instance": instance_id}
+
+  # --- Event Rule to trigger Lambda on ASG launch ---
+  ENIAttachRule:
+    Type: AWS::Events::Rule
+    Properties:
+      EventPattern:
+        source:
+          - aws.autoscaling
+        detail-type:
+          - EC2 Instance-launch Lifecycle Action
+        detail:
+          AutoScalingGroupName:
+            - !Ref SplunkASG
+      Targets:
+        - Arn: !GetAtt AttachENILambda.Arn
+          Id: TargetFunctionV1
+
+  PermissionForEventsToInvokeLambda:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref AttachENILambda
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt ENIAttachRule.Arn
+
+  # --- Launch Template ---
+  SplunkLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        InstanceType: m5.xlarge
+        ImageId: !Ref SplunkAMI
+        KeyName: !Ref KeyName
+        IamInstanceProfile:
+          Arn: !GetAtt SplunkInstanceProfile.Arn
+        # Primary ENI auto-created; fixed ENI attached by Lambda
+        UserData:
+          Fn::Base64: !Sub |
+            #!/bin/bash
+            echo "Splunk AMI bootstrapping..."
+
+  # --- AutoScaling Group ---
+  SplunkASG:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      MinSize: 1
+      MaxSize: 1
+      DesiredCapacity: 1
+      VPCZoneIdentifier:
+        - !Ref SubnetId
+      LaunchTemplate:
+        LaunchTemplateId: !Ref SplunkLaunchTemplate
+        Version: !GetAtt SplunkLaunchTemplate.LatestVersionNumber
+      Tags:
+        - Key: Name
+          Value: SplunkInstance
+          PropagateAtLaunch: true
