@@ -1,0 +1,66 @@
+Parameters:
+  SubnetAzA: 
+    Type: AWS::EC2::Subnet::Id
+  SubnetAzB: 
+    Type: AWS::EC2::Subnet::Id
+  SecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+  SplunkAMI:
+    Type: AWS::EC2::Image::Id
+
+Resources:
+  # ENIs in AZ-A
+  SplunkENI_A1:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !Ref SubnetAzA
+      GroupSet: [!Ref SecurityGroupId]
+      Tags: [{ Key: Name, Value: SplunkENI-A1 }]
+  SplunkENI_A2:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !Ref SubnetAzA
+      GroupSet: [!Ref SecurityGroupId]
+      Tags: [{ Key: Name, Value: SplunkENI-A2 }]
+
+  # ENIs in AZ-B
+  SplunkENI_B1:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !Ref SubnetAzB
+      GroupSet: [!Ref SecurityGroupId]
+      Tags: [{ Key: Name, Value: SplunkENI-B1 }]
+  SplunkENI_B2:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !Ref SubnetAzB
+      GroupSet: [!Ref SecurityGroupId]
+      Tags: [{ Key: Name, Value: SplunkENI-B2 }]
+
+  # Launch Template
+  SplunkLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        InstanceType: m5.xlarge
+        ImageId: !Ref SplunkAMI
+        KeyName: !Ref KeyName
+        IamInstanceProfile:
+          Arn: !GetAtt SplunkInstanceProfile.Arn
+        # Default ENI is created automatically, Splunk ENIs are added by Lambda
+
+  # Auto Scaling Group across 2 AZs
+  SplunkASG:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      MinSize: 2
+      MaxSize: 2
+      DesiredCapacity: 2
+      VPCZoneIdentifier:
+        - !Ref SubnetAzA
+        - !Ref SubnetAzB
+      LaunchTemplate:
+        LaunchTemplateId: !Ref SplunkLaunchTemplate
+        Version: !GetAtt SplunkLaunchTemplate.LatestVersionNumber
