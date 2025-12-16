@@ -4,6 +4,9 @@ import Button from '@splunk/react-ui/Button';
 import StepBar from '@splunk/react-ui/StepBar';
 import ChevronLeft from '@splunk/react-icons/ChevronLeft';
 import ChevronRight from '@splunk/react-icons/ChevronRight';
+import WaitSpinner from '@splunk/react-ui/WaitSpinner';
+import Message from '@splunk/react-ui/Message';
+import Link from '@splunk/react-ui/Link';
 import ApplicationDetailsForm from '../components/IndexCreationPage/ApplicationDetailsForm';
 import SplunkDetailsForm from '../components/IndexCreationPage/IndexCreateForm';
 import IndexConfigGenerator from '../components/IndexCreationPage/GenerateSplunkIndexConfig';
@@ -28,12 +31,36 @@ const steps = [
 const LEFT_COLUMN_SPAN = 3;
 const RIGHT_COLUMN_SPAN = 9;
 
+/**
+ * Generate a unique self-service request number
+ * Format: SSREQ-YYYYMMDD-XXXXX (e.g., SSREQ-20231215-A1B2C)
+ */
+function generateRequestNumber() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const dateStr = `${year}${month}${day}`;
+  
+  // Generate random alphanumeric suffix
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let suffix = '';
+  for (let i = 0; i < 5; i++) {
+    suffix += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  
+  return `SSREQ-${dateStr}-${suffix}`;
+}
+
 export default function SplunkIndexCreatePage() {
   const [activeStepId, setActiveStepId] = useState(0);
   const numSteps = steps.length;
   const [totalCost, setTotalCost] = useState(0);
   
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitStatus, setSubmitStatus] = useState('idle'); // 'idle' | 'submitting' | 'success' | 'error'
+  const [submitProgress, setSubmitProgress] = useState(''); // Current step message
+  const [requestNumber, setRequestNumber] = useState('');
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState('info'); // 'info' | 'success' | 'error'
 
@@ -214,44 +241,73 @@ export default function SplunkIndexCreatePage() {
     setMessageType('info');
   }, []);
 
-  const buildPayload = useCallback(() => ({
-    _key: indexCreateFormData.indexNameProposed,
-    applicationName: indexCreateFormData.applicationName,
-    appID: indexCreateFormData.appID,
-    requestedBy: indexCreateFormData.currentUser,
-    targetIndexCluster: indexCreateFormData.targetIndexCluster,
-    dataOriginDomain: indexCreateFormData.dataOriginDomain,
-    splunkEngagementRequestNumber: indexCreateFormData.splunkEngagementRequestNumber,
-    dataIngestionPerDayMB: Number(indexCreateFormData.dataIngestionPerDayMB),
-    splunkDataRetention: Number(indexCreateFormData.splunkDataRetention),
-    globalIndexFlag: indexCreateFormData.globalIndexFlag,
-    indexNameProposed: indexCreateFormData.indexNameProposed,
-    indexNameExtraSegment: indexCreateFormData.indexNameExtraSegment,
-    indexConfigStanza: indexCreateFormData.indexConfigStanza,
-    authorizeConfig: indexCreateFormData.authorizeConfig,
-    authenticationMappingConfig: indexCreateFormData.authenticationMappingConfig,
-    agsMappingEnabled: !!indexCreateFormData.agsMappingEnabled,
-    agsMappingConfig: indexCreateFormData.agsMappingConfig,
-    adGroupNameProposed: indexCreateFormData.adGroupNameProposed,
-    AGSSecondLevelApprover: indexCreateFormData.AGSSecondLevelApprover,
-    AGSSecondLevelBackupApprover: indexCreateFormData.AGSSecondLevelBackupApprover,
-    AGSThirdLevelApprover: indexCreateFormData.AGSThirdLevelApprover,
-    AGSThirdLevelBackupApprover: indexCreateFormData.AGSThirdLevelBackupApprover,
-    indexClusterRepo: indexCreateFormData.indexClusterRepo,
-    submittedAt: new Date().toISOString(),
-    totalCost,
-  }), [indexCreateFormData, totalCost]);
+  const buildPayload = useCallback(() => {
+    const reqNumber = requestNumber || generateRequestNumber();
+    setRequestNumber(reqNumber);
+    
+    return {
+      _key: indexCreateFormData.indexNameProposed,
+      requestNumber: reqNumber,
+      status: 'New',
+      applicationName: indexCreateFormData.applicationName,
+      appID: indexCreateFormData.appID,
+      requestedBy: indexCreateFormData.currentUser,
+      targetIndexCluster: indexCreateFormData.targetIndexCluster,
+      dataOriginDomain: indexCreateFormData.dataOriginDomain,
+      splunkEngagementRequestNumber: indexCreateFormData.splunkEngagementRequestNumber,
+      dataIngestionPerDayMB: Number(indexCreateFormData.dataIngestionPerDayMB),
+      splunkDataRetention: Number(indexCreateFormData.splunkDataRetention),
+      globalIndexFlag: indexCreateFormData.globalIndexFlag,
+      indexNameProposed: indexCreateFormData.indexNameProposed,
+      indexNameExtraSegment: indexCreateFormData.indexNameExtraSegment,
+      indexConfigStanza: indexCreateFormData.indexConfigStanza,
+      authorizeConfig: indexCreateFormData.authorizeConfig,
+      authenticationMappingConfig: indexCreateFormData.authenticationMappingConfig,
+      agsMappingEnabled: !!indexCreateFormData.agsMappingEnabled,
+      agsMappingConfig: indexCreateFormData.agsMappingConfig,
+      adGroupNameProposed: indexCreateFormData.adGroupNameProposed,
+      AGSSecondLevelApprover: indexCreateFormData.AGSSecondLevelApprover,
+      AGSSecondLevelBackupApprover: indexCreateFormData.AGSSecondLevelBackupApprover,
+      AGSThirdLevelApprover: indexCreateFormData.AGSThirdLevelApprover,
+      AGSThirdLevelBackupApprover: indexCreateFormData.AGSThirdLevelBackupApprover,
+      indexClusterRepo: indexCreateFormData.indexClusterRepo,
+      submittedAt: new Date().toISOString(),
+      totalCost,
+    };
+  }, [indexCreateFormData, totalCost, requestNumber]);
+
+  const validateGitPayload = (payload) => {
+    const errors = [];
+    if (!payload.indexName?.trim()) errors.push('indexName is required');
+    if (!payload.appId?.trim()) errors.push('appId is required');
+    if (!payload.stanzaContent?.trim()) errors.push('stanzaContent is required');
+    if (!payload.authorName?.trim()) errors.push('authorName is required');
+    if (!payload.authorEmail?.trim()) errors.push('authorEmail is required');
+    if (!payload.branch?.trim()) errors.push('branch is required');
+    
+    if (errors.length > 0) {
+      throw new Error(`Invalid GitLab payload: ${errors.join(', ')}`);
+    }
+  };
 
   const handleSubmit = useCallback(async () => {
     if (isSubmitting) return;
     
     setIsSubmitting(true);
-    setMessage('Submitting request...');
+    setSubmitStatus('submitting');
+    setSubmitProgress('Initializing submission...');
+    setMessage('');
     setMessageType('info');
 
     try {
-      // Step 1: Save to KV Store
+      // Step 1: Generate request number and save to KV Store
+      setSubmitProgress('Generating request number...');
       const payload = buildPayload();
+      const reqNum = payload.requestNumber;
+      
+      setSubmitProgress(`Saving request ${reqNum} to database...`);
+      console.log('Saving to KV Store...', payload);
+      
       await insertKVStore(
         'selfservice_index_details_collection',
         '',
@@ -259,49 +315,82 @@ export default function SplunkIndexCreatePage() {
         'Failed to store request in KV Store'
       );
       
-      setMessage('Request saved. Creating GitLab merge request...');
-      setMessageType('info');
+      setSubmitProgress('Request saved successfully. Creating GitLab merge request...');
 
-      // Step 2: Create GitLab MR
+      // Step 2: Validate all required fields for GitLab
+      if (!indexCreateFormData.indexNameProposed?.trim()) {
+        throw new Error('Index name is required for GitLab commit');
+      }
+      if (!indexCreateFormData.appID?.trim()) {
+        throw new Error('Application ID is required for GitLab commit');
+      }
+      if (!indexCreateFormData.indexConfigStanza?.trim()) {
+        throw new Error('Index configuration stanza is required for GitLab commit');
+      }
+      if (!indexCreateFormData.currentUser?.trim()) {
+        throw new Error('Current user information is missing');
+      }
+      if (!indexCreateFormData.splunkEngagementRequestNumber?.trim()) {
+        throw new Error('Splunk Engagement Request Number is required');
+      }
+
+      // Step 3: Build GitLab payload with validated data
       const gitPayload = {
-        indexName: indexCreateFormData.indexNameProposed,
-        appId: indexCreateFormData.appID,
-        stanzaContent: indexCreateFormData.indexConfigStanza,
-        authorName: indexCreateFormData.currentUser,
-        authorEmail: `${indexCreateFormData.currentUser}@yourcompany.com`, // Update domain as needed
-        branch: `feature/add-index-${indexCreateFormData.splunkEngagementRequestNumber}`,
+        indexName: indexCreateFormData.indexNameProposed.trim(),
+        appId: indexCreateFormData.appID.trim(),
+        stanzaContent: indexCreateFormData.indexConfigStanza.trim(),
+        authorName: indexCreateFormData.currentUser.trim(),
+        authorEmail: `${indexCreateFormData.currentUser.trim()}@yourcompany.com`,
+        branch: `feature/add-index-${indexCreateFormData.splunkEngagementRequestNumber.trim()}`,
         labels: ['index', 'splunk'],
       };
+
+      // Additional validation
+      validateGitPayload(gitPayload);
+
+      setSubmitProgress('Committing configuration to GitLab...');
+      console.log('Committing to GitLab...', gitPayload);
 
       const gitRes = await commitIndexStanzaToGitLab(gitPayload, {
         timeoutMs: 20000,
         maxRetries: 3,
-        onDebug: (info) => console.debug('GitLab commit:', info),
+        onDebug: (info) => console.debug('GitLab commit debug:', info),
       });
+
+      console.log('GitLab response:', gitRes);
 
       const mr = gitRes?.payload?.mergeRequest;
       if (mr?.url) {
         setMrInfo({ url: mr.url, iid: mr.iid, title: mr.title });
-        setMessage(`Success! Merge request created. Redirecting to GitLab...`);
+        setSubmitStatus('success');
+        setSubmitProgress('');
+        setMessage(`Request ${reqNum} submitted successfully!`);
         setMessageType('success');
-        
-        // Redirect after 3 seconds
-        setTimeout(() => {
-          window.location.href = mr.url;
-        }, 3000);
       } else {
-        setMessage('Request saved successfully, but GitLab MR URL not returned. Please check GitLab manually.');
+        setSubmitStatus('success');
+        setSubmitProgress('');
+        setMessage(`Request ${reqNum} saved, but GitLab MR URL not returned. Please check GitLab manually.`);
         setMessageType('success');
       }
     } catch (error) {
       console.error('Submit failed:', error);
       
+      setSubmitStatus('error');
+      setSubmitProgress('');
+      
       // Provide specific error context
       let errorMsg = 'Submission failed. ';
+      
       if (error.name === 'GitLabCommitError') {
         errorMsg += `GitLab error (${error.status}): ${error.message}`;
+        if (error.bodySnippet) {
+          console.error('Response body:', error.bodySnippet);
+        }
       } else if (error.name === 'TimeoutError') {
         errorMsg += 'Request timed out. Please try again.';
+      } else if (error.message?.includes('Invalid value')) {
+        errorMsg += 'Configuration error. Please check all required fields are filled correctly.';
+        console.error('Invalid value error - check form data:', indexCreateFormData);
       } else {
         errorMsg += error?.message || 'Unknown error occurred.';
       }
@@ -311,7 +400,7 @@ export default function SplunkIndexCreatePage() {
     } finally {
       setIsSubmitting(false);
     }
-  }, [isSubmitting, buildPayload, indexCreateFormData]);
+  }, [isSubmitting, buildPayload, indexCreateFormData, validateGitPayload]);
 
   const handleNext = useCallback(() => {
     let isValid = true;
