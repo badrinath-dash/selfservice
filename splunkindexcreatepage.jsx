@@ -66,7 +66,8 @@ export default function SplunkIndexCreatePage() {
 
   const [indexCreateFormData, setIndexCreateFormData] = useState({
     applicationName: '',
-    currentUser: '',
+    currentUserEmail: '',
+    currentUserName: '',
     appID: '',
     dataOwner: '',
     dataOwnerUserId: '',
@@ -109,12 +110,12 @@ export default function SplunkIndexCreatePage() {
   const canGoNextFromApplication = useMemo(() => {
     return Boolean(
       indexCreateFormData.appID &&
-      indexCreateFormData.currentUser &&
+      indexCreateFormData.currentUserEmail &&
       indexCreateFormData.applicationName
     );
   }, [
     indexCreateFormData.appID,
-    indexCreateFormData.currentUser,
+    indexCreateFormData.currentUserEmail,
     indexCreateFormData.applicationName,
   ]);
 
@@ -198,8 +199,8 @@ export default function SplunkIndexCreatePage() {
     if (!indexCreateFormData.appID) {
       newErrors.appID = 'Application ID is required. Please select from the dropdown.';
     }
-    if (!indexCreateFormData.currentUser) {
-      newErrors.currentUser = 'Failed to get current user details. Please refresh the page.';
+    if (!indexCreateFormData.currentUserEmail) {
+      newErrors.currentUserEmail = 'Failed to get current user details. Please refresh the page.';
     }
     if (!indexCreateFormData.applicationName) {
       newErrors.applicationName = 'Application Name is required.';
@@ -251,7 +252,7 @@ export default function SplunkIndexCreatePage() {
       status: 'New',
       applicationName: indexCreateFormData.applicationName,
       appID: indexCreateFormData.appID,
-      requestedBy: indexCreateFormData.currentUser,
+      requestedBy: indexCreateFormData.currentUserEmail,
       targetIndexCluster: indexCreateFormData.targetIndexCluster,
       dataOriginDomain: indexCreateFormData.dataOriginDomain,
       splunkEngagementRequestNumber: indexCreateFormData.splunkEngagementRequestNumber,
@@ -280,7 +281,7 @@ export default function SplunkIndexCreatePage() {
     const errors = [];
     if (!payload.indexName?.trim()) errors.push('indexName is required');
     if (!payload.appId?.trim()) errors.push('appId is required');
-    if (!payload.stanzaContent?.trim()) errors.push('stanzaContent is required');
+    if (!payload.stanza?.trim()) errors.push('stanzaContent is required');
     if (!payload.authorName?.trim()) errors.push('authorName is required');
     if (!payload.authorEmail?.trim()) errors.push('authorEmail is required');
     if (!payload.branch?.trim()) errors.push('branch is required');
@@ -327,7 +328,7 @@ export default function SplunkIndexCreatePage() {
       if (!indexCreateFormData.indexConfigStanza?.trim()) {
         throw new Error('Index configuration stanza is required for GitLab commit');
       }
-      if (!indexCreateFormData.currentUser?.trim()) {
+      if (!indexCreateFormData.currentUserEmail?.trim()) {
         throw new Error('Current user information is missing');
       }
       if (!indexCreateFormData.splunkEngagementRequestNumber?.trim()) {
@@ -338,11 +339,11 @@ export default function SplunkIndexCreatePage() {
       const gitPayload = {
         indexName: indexCreateFormData.indexNameProposed.trim(),
         appId: indexCreateFormData.appID.trim(),
-        stanzaContent: indexCreateFormData.indexConfigStanza.trim(),
-        authorName: indexCreateFormData.currentUser.trim(),
-        authorEmail: `${indexCreateFormData.currentUser.trim()}@yourcompany.com`,
+        stanza: indexCreateFormData.indexConfigStanza.trim(),
+        authorName: indexCreateFormData.currentUserName.trim(),
+        authorEmail: indexCreateFormData.currentUserEmail.trim(),
         branch: `feature/add-index-${indexCreateFormData.splunkEngagementRequestNumber.trim()}`,
-        labels: ['index', 'splunk'],
+        labels: ['splunk-index-create-selfserve', 'splunk'],
       };
 
       // Additional validation
