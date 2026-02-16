@@ -271,4 +271,48 @@ const SplunkDataCatalogueHomePage = () => {
                                                 <Heading level={3} style={{ margin: 0, fontSize: '18px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                                     {asset.index_name}
                                                 </Heading>
-                                                <Text color="muted
+                                                <Text color="muted" size="small">{asset.source_itam_bsa || 'System'}</Text>
+                                            </div>
+                                            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                                <TypeIconBox isMetrics={isMetrics} title={isMetrics ? 'Metrics Index' : 'Event Index'}>
+                                                    <TypeIcon size={1.2} />
+                                                </TypeIconBox>
+                                                {renderEllipsisMenu(asset)}
+                                            </div>
+                                        </div>
+
+                                        <BentoGrid>
+                                            <StatItem><span className="label">Size</span><span className="value">{asset.index_size_mb}MB</span></StatItem>
+                                            <StatItem><span className="label">Usage</span><span className="value">{asset.avg_index_usage_mb}MB</span></StatItem>
+                                            <StatItem><span className="label">Days</span><span className="value">{asset.index_retention_period}d</span></StatItem>
+                                        </BentoGrid>
+
+                                        <Text style={{ minHeight: 54, opacity: 0.8, fontSize: '13px', lineHeight: '1.4' }}>
+                                            {asset.index_description || "No description provided for this data asset."}
+                                        </Text>
+
+                                        <Button appearance="secondary" label="View Details" style={{ width: '100%', marginTop: 20, borderRadius: 12 }} />
+                                    </StyledCard>
+                                );
+                            })}
+                        </CardLayout>
+
+                        {/* --- PAGINATOR --- */}
+                        <div style={{ marginTop: 40, display: 'flex', justifyContent: 'center' }}>
+                            <Paginator 
+                                current={safeCurrentPage} 
+                                totalPages={totalPages} 
+                                onChange={(_, { page }) => setCurrentPage(page)} 
+                            />
+                        </div>
+                    </main>
+                </MainLayout>
+            </PageContainer>
+
+            <HomePageHistoryModalPanelReact ref={childRef} />
+            <HomeIndexDetailsModalPanelReact ref={childRef1} />
+        </SplunkThemeProvider>
+    );
+};
+
+export default SplunkDataCatalogueHomePage;
