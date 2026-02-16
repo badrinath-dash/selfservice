@@ -1,3 +1,75 @@
+const IndexTypeIndicator = ({ type }) => {
+    const isMetrics = type?.toLowerCase() === 'metrics';
+    
+    // Modern colors: Electric Purple for Metrics, Teal/Green for Events
+    const iconColor = isMetrics ? '#B66DFF' : '#00D1AF';
+    const IconComponent = isMetrics ? Metrics : Event;
+
+    return (
+        <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '32px',
+            height: '32px',
+            borderRadius: '10px',
+            background: `${iconColor}22`, // 22 is ~13% opacity for a soft glow
+            border: `1px solid ${iconColor}44`,
+            color: iconColor,
+            marginBottom: '12px'
+        }}>
+            <IconComponent size={1.2} />
+        </div>
+    );
+};
+
+
+{currentPageResults.map((asset) => (
+    <div key={asset._key} style={modernCardStyle}>
+        
+        {/* 1. Add the Icon Indicator here */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <IndexTypeIndicator type={asset.index_type} />
+            {renderEllipsisMenu(asset, asset.index_name)}
+        </div>
+
+        {/* 2. Title and rest of the content */}
+        <div style={{ fontSize: '20px', fontWeight: 700, color: '#fff', marginBottom: '4px' }}>
+            {asset.index_name}
+        </div>
+        
+        <div style={{ fontSize: '12px', color: '#9AA4AE', marginBottom: '16px' }}>
+            {asset.index_type?.toUpperCase() || 'EVENT'} DATASET
+        </div>
+
+        {/* ... existing metadata pills and bento row ... */}
+    </div>
+))}
+
+
+
+{currentPageResults.map((asset) => (
+    <div key={asset._key} style={modernCardStyle}>
+        
+        {/* 1. Add the Icon Indicator here */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <IndexTypeIndicator type={asset.index_type} />
+            {renderEllipsisMenu(asset, asset.index_name)}
+        </div>
+
+        {/* 2. Title and rest of the content */}
+        <div style={{ fontSize: '20px', fontWeight: 700, color: '#fff', marginBottom: '4px' }}>
+            {asset.index_name}
+        </div>
+        
+        <div style={{ fontSize: '12px', color: '#9AA4AE', marginBottom: '16px' }}>
+            {asset.index_type?.toUpperCase() || 'EVENT'} DATASET
+        </div>
+
+        {/* ... existing metadata pills and bento row ... */}
+    </div>
+))}
+
 // New "Modern" Styling Tokens
 const modernCardStyle = {
     position: 'relative',
