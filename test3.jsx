@@ -1,213 +1,189 @@
 {currentPageResults.map((asset) => {
     const isMetrics = (asset?.index_type || '').toLowerCase() === 'metrics';
-    
-    // Define modern Splunk-themed colors
-    const typeColor = isMetrics ? '#B66DFF' : '#00D1AF'; // Purple for Metrics, Teal for Events
+    const typeColor = isMetrics ? '#B66DFF' : '#00D1AF'; 
     const TypeIcon = isMetrics ? Metrics : Event;
 
     return (
         <div key={asset._key} style={modernCardStyle}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    {/* The Splunk React Icon */}
-                    <TypeIcon size={1.5} style={{ color: typeColor }} /> 
-                    
-                    <div>
-                        <div style={{ fontSize: '18px', fontWeight: 700, color: '#fff' }}>
-                            {asset.index_name}
-                        </div>
-                        <div style={{ fontSize: '10px', color: typeColor, fontWeight: 600, letterSpacing: '0.5px' }}>
-                            {isMetrics ? 'METRICS INDEX' : 'EVENT INDEX'}
-                        </div>
+            {/* --- HEADER ROW --- */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+                
+                {/* Left side: Name and Subtitle */}
+                <div>
+                    <div style={{ fontSize: '20px', fontWeight: 700, color: '#fff', letterSpacing: '-0.5px' }}>
+                        {asset.index_name}
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#9AA4AE', marginTop: '2px' }}>
+                        {asset.source_itam_bsa || 'System Asset'}
                     </div>
                 </div>
-                {renderEllipsisMenu(asset, asset.index_name)}
+
+                {/* Right side: Modern Type Icon + Menu */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    {/* The "Right-aligned" Modern Icon */}
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: '36px',
+                        height: '36px',
+                        borderRadius: '12px',
+                        background: 'rgba(255, 255, 255, 0.05)',
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                        boxShadow: `inset 0 0 10px ${typeColor}15`, // Subtle internal glow
+                        color: typeColor
+                    }} title={isMetrics ? 'Metrics' : 'Event'}>
+                        <TypeIcon size={1.2} />
+                    </div>
+
+                    {/* Ellipsis Menu */}
+                    {renderEllipsisMenu(asset, asset.index_name)}
+                </div>
             </div>
 
-            {/* Rest of your card content (Pills, Description, Bento Box) */}
-            ...
+            {/* --- REST OF CARD (Pills, Description, etc.) --- */}
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+                <Chip appearance={asset.index_active ? 'success' : 'neutral'}>
+                    {asset.index_active ? 'Active' : 'Inactive'}
+                </Chip>
+                <Chip outline>Retention: {asset.index_retention_period}d</Chip>
+            </div>
+            
+            <div style={{ ...bodyTextStyle, ...clamp3, minHeight: '54px', fontSize: '13px', opacity: 0.7 }}>
+                {asset.index_description || "No description provided."}
+            </div>
+
+            {/* ... Bento Row and Detail Button ... */}
         </div>
     );
 })}
 
 
-{currentPageResults.map((asset) => (
-    <div key={asset._key} style={modernCardStyle}>
-        
-        {/* 1. Add the Icon Indicator here */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <IndexTypeIndicator type={asset.index_type} />
-            {renderEllipsisMenu(asset, asset.index_name)}
-        </div>
+const [activeFilters, setActiveFilters] = useState({
+    activeOnly: 'all',
+    type: 'all',
+    showInternal: 'exclude' // 'all', 'only', 'exclude'
+});
+// sortType already exists in your original code, we will just map it to the UI
 
-        {/* 2. Title and rest of the content */}
-        <div style={{ fontSize: '20px', fontWeight: 700, color: '#fff', marginBottom: '4px' }}>
-            {asset.index_name}
-        </div>
-        
-        <div style={{ fontSize: '12px', color: '#9AA4AE', marginBottom: '16px' }}>
-            {asset.index_type?.toUpperCase() || 'EVENT'} DATASET
-        </div>
 
-        {/* ... existing metadata pills and bento row ... */}
+const filteredResults = useMemo(() => {
+    return assetValues.filter((row) => {
+        const name = (row?.index_name || '').toLowerCase();
+        const isInternal = name.startsWith('_');
+
+        // Internal Index Logic
+        const matchesInternal = 
+            activeFilters.showInternal === 'all' || 
+            (activeFilters.showInternal === 'only' ? isInternal : !isInternal);
+
+        // ... combine with your existing Search, Status, and Type filters ...
+        return matchesSearch && matchesStatus && matchesType && matchesInternal;
+    });
+}, [assetValues, searchFilterName, normalizedSearch, activeFilters]);
+
+
+
+<aside style={{ width: '280px', position: 'sticky', top: '40px', paddingRight: '10px' }}>
+    
+    {/* --- 1. SORT BY SECTION --- */}
+    <div style={{ marginBottom: '32px' }}>
+        <Heading level={4} style={{ marginBottom: '16px', color: '#9AA4AE', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Activity size={1} /> Sort By
+        </Heading>
+        <Select
+            name="sortType"
+            value={sortType}
+            onChange={(_, { value }) => setSortType(value)}
+            style={{ width: '100%' }}
+        >
+            {/* Using your existing SortByOptions from common/DropDownData */}
+            {SortByOptions.map((opt) => (
+                <Select.Option key={opt.value} label={opt.label} value={opt.value} />
+            ))}
+        </Select>
     </div>
-))}
 
-
-
-{currentPageResults.map((asset) => (
-    <div key={asset._key} style={modernCardStyle}>
-        
-        {/* 1. Add the Icon Indicator here */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <IndexTypeIndicator type={asset.index_type} />
-            {renderEllipsisMenu(asset, asset.index_name)}
-        </div>
-
-        {/* 2. Title and rest of the content */}
-        <div style={{ fontSize: '20px', fontWeight: 700, color: '#fff', marginBottom: '4px' }}>
-            {asset.index_name}
-        </div>
-        
-        <div style={{ fontSize: '12px', color: '#9AA4AE', marginBottom: '16px' }}>
-            {asset.index_type?.toUpperCase() || 'EVENT'} DATASET
-        </div>
-
-        {/* ... existing metadata pills and bento row ... */}
+    {/* --- 2. INTERNAL INDEX TOGGLE --- */}
+    <div style={{ marginBottom: '32px' }}>
+        <Heading level={4} style={{ marginBottom: '16px', color: '#9AA4AE' }}>Internal Indexes</Heading>
+        <RadioList 
+            value={activeFilters.showInternal} 
+            onChange={(_, { value }) => setActiveFilters(prev => ({ ...prev, showInternal: value }))}
+        >
+            <RadioList.Option value="exclude">Hide Internal (_)</RadioList.Option>
+            <RadioList.Option value="all">Show All</RadioList.Option>
+            <RadioList.Option value="only">Internal Only</RadioList.Option>
+        </RadioList>
     </div>
-))}
 
-// New "Modern" Styling Tokens
-const modernCardStyle = {
-    position: 'relative',
-    background: 'rgba(255, 255, 255, 0.03)', // Glass effect base
-    backdropFilter: 'blur(12px)',
-    borderRadius: '24px', // Softer corners
-    border: '1px solid rgba(255, 255, 255, 0.08)',
-    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-    cursor: 'pointer',
-    padding: '24px',
-};
+    {/* --- 3. EXISTING ATTRIBUTE FILTERS --- */}
+    <div style={{ marginBottom: '32px' }}>
+        <Heading level={4} style={{ marginBottom: '16px', color: '#9AA4AE' }}>Status</Heading>
+        <RadioList 
+            value={activeFilters.activeOnly} 
+            onChange={(_, { value }) => setActiveFilters(prev => ({ ...prev, activeOnly: value }))}
+        >
+            <RadioList.Option value="all">Any Status</RadioList.Option>
+            <RadioList.Option value="active">Active</RadioList.Option>
+            <RadioList.Option value="inactive">Inactive</RadioList.Option>
+        </RadioList>
+    </div>
 
-const searchWrapperStyle = {
-    maxWidth: '800px',
-    margin: '0 auto 40px auto',
-    padding: '4px',
-    background: 'rgba(255, 255, 255, 0.05)',
-    borderRadius: '16px',
-    boxShadow: '0 10px 30px rgba(0,0,0,0.2)',
-};
+    {/* Clear Filters Button */}
+    <Button 
+        appearance="pill" 
+        label="Reset View" 
+        onClick={() => {
+            setActiveFilters({ activeOnly: 'all', type: 'all', showInternal: 'exclude' });
+            setSortType('index_name');
+        }}
+        style={{ width: '100%', marginTop: '10px' }}
+    />
+</aside>
 
-// ... inside your component
 
-return (
-    <SplunkThemeProvider family="prisma" colorScheme="dark" density="comfortable">
-        <div style={{ padding: '40px', maxWidth: '1400px', margin: '0 auto' }}>
-            
-            {/* 1. Hero Search Section */}
-            <div style={{ textAlign: 'center', marginBottom: '60px' }}>
-                <Heading level={1} style={{ fontSize: '42px', fontWeight: 800, marginBottom: '12px' }}>
-                    Data Catalogue
-                </Heading>
-                <Text size="large" color="muted">Explore indexes, track retention, and manage assets.</Text>
-                
-                <div style={{ marginTop: '32px' }}>
-                    <div style={searchWrapperStyle}>
-                        <ModernSearchBar
-                            value={searchTerm}
-                            onChange={setSearchTerm}
-                            filterKey={searchFilterName}
-                            onFilterKeyChange={setSearchFilterName}
-                            options={searchFieldOptions}
-                            placeholder="Find an index... (Press /)"
-                        />
-                    </div>
-                </div>
-            </div>
 
-            {/* 2. Quick Actions */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '24px', alignItems: 'center' }}>
-                <Text bold style={{ fontSize: '18px' }}>{filteredResults.length} Assets Found</Text>
-                <div style={{ display: 'flex', gap: '12px' }}>
-                    <HomeHelpMenuReact />
-                    <Button appearance="primary" icon={<Plus />} label="New Asset" to="manage-asset?key=" />
-                </div>
-            </div>
 
-            {/* 3. The Modern Grid */}
-            <CardLayout cardWidth={340} gutterSize={24}>
-                {currentPageResults.map((asset) => (
-                    <div 
-                        key={asset._key} 
-                        style={modernCardStyle}
-                        onMouseEnter={(e) => {
-                            e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.07)';
-                            e.currentTarget.style.transform = 'translateY(-5px)';
-                        }}
-                        onMouseLeave={(e) => {
-                            e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.03)';
-                            e.currentTarget.style.transform = 'translateY(0)';
-                        }}
-                    >
-                        {/* Header Section */}
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
-                            <div style={{ fontSize: '20px', fontWeight: 700, color: '#fff' }}>{asset.index_name}</div>
-                            {renderEllipsisMenu(asset, asset.index_name)}
-                        </div>
+    <aside style={{ width: '280px', position: 'sticky', top: '40px', paddingRight: '10px' }}>
+    
+    {/* ... Sort Section ... */}
+    {/* ... Internal Index Section ... */}
+    {/* ... Status Section ... */}
 
-                        {/* Metadata Pills */}
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '20px' }}>
-                            <Chip appearance={asset.index_active ? 'success' : 'neutral'}>
-                                {asset.index_active ? 'Active' : 'Offline'}
-                            </Chip>
-                            <Chip outline>{asset.index_type || 'Event'}</Chip>
-                            <Chip appearance="info">{asset.index_retention_period}d Retention</Chip>
-                        </div>
-
-                        {/* Stats "Bento" Row */}
-                        <div style={{ 
-                            display: 'grid', 
-                            gridTemplateColumns: '1fr 1fr', 
-                            gap: '12px', 
-                            background: 'rgba(0,0,0,0.2)', 
-                            padding: '12px', 
-                            borderRadius: '12px',
-                            marginBottom: '20px'
-                        }}>
-                            <div>
-                                <div style={{ fontSize: '10px', color: '#9AA4AE', textTransform: 'uppercase' }}>Size</div>
-                                <div style={{ fontSize: '16px', fontWeight: 600 }}>{asset.index_size_mb} MB</div>
-                            </div>
-                            <div>
-                                <div style={{ fontSize: '10px', color: '#9AA4AE', textTransform: 'uppercase' }}>Avg Usage</div>
-                                <div style={{ fontSize: '16px', fontWeight: 600 }}>{asset.avg_index_usage_mb} MB</div>
-                            </div>
-                        </div>
-
-                        <div style={{ ...bodyTextStyle, ...clamp3, minHeight: '60px', opacity: 0.8 }}>
-                            {asset.index_description || "No description provided for this data asset."}
-                        </div>
-
-                        <div style={{ marginTop: '24px' }}>
-                            <Button 
-                                appearance="secondary" 
-                                label="View Asset Details" 
-                                style={{ width: '100%', borderRadius: '12px' }}
-                                to={`manage-asset?key=${asset._key}`}
-                            />
-                        </div>
-                    </div>
-                ))}
-            </CardLayout>
-
-            {/* Pagination */}
-            <div style={{ marginTop: '40px', display: 'flex', justifyContent: 'center' }}>
-                <Paginator
-                    current={safeCurrentPage}
-                    totalPages={totalPages}
-                    onChange={(_, { page }) => setCurrentPage(page)}
+    {/* --- 4. RESULTS PER PAGE --- */}
+    <div style={{ marginBottom: '32px' }}>
+        <Heading level={4} style={{ marginBottom: '16px', color: '#9AA4AE' }}>Page Size</Heading>
+        <div style={{ display: 'flex', gap: '8px' }}>
+            {[10, 20, 50, 100].map((size) => (
+                <Button
+                    key={size}
+                    appearance={postsPerPage === size ? 'primary' : 'secondary'}
+                    label={String(size)}
+                    onClick={() => setPostsPerPage(size)}
+                    style={{ flex: 1, minWidth: 0, padding: '4px' }}
                 />
-            </div>
+            ))}
+        </div>
+        <Text size="small" color="muted" style={{ marginTop: '8px', display: 'block' }}>
+            Showing {Math.min(postsPerPage, filteredResults.length)} of {filteredResults.length}
+        </Text>
+    </div>
+
+    {/* Clear Filters Button */}
+    <Button 
+        appearance="pill" 
+        label="Reset All" 
+        onClick={() => {
+            setActiveFilters({ activeOnly: 'all', type: 'all', showInternal: 'exclude' });
+            setSortType('index_name');
+            setPostsPerPage(10);
+        }}
+        style={{ width: '100%', marginTop: '10px' }}
+    />
+</aside>
+
+        
         </div>
     </SplunkThemeProvider>
 );
