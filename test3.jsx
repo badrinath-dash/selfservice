@@ -24,7 +24,7 @@ import Plus from '@splunk/react-icons/enterprise/Plus';
 import Activity from '@splunk/react-icons/enterprise/Activity';
 import DataSource from '@splunk/react-icons/enterprise/DataSource';
 
-// Local Imports
+// Local Imports (Ensure these paths match your project structure)
 import { searchKVStore, deleteKVStore } from '../common/ManageKVStore';
 import { SortByOptions } from '../common/DropDownData';
 import { HomeHelpMenuReact } from '../components/DataCatalogueHome/HomeHelpMenu';
@@ -54,7 +54,7 @@ const Sidebar = styled.aside`
     width: 280px;
     position: sticky;
     top: 40px;
-    padding-right: 10px;
+    padding-right: 20px;
     border-right: 1px solid ${variables.borderColor};
 `;
 
@@ -136,14 +136,16 @@ const SplunkDataCatalogueHomePage = () => {
     const childRef = useRef();
     const childRef1 = useRef();
 
-    // Logic: Filtering & Sorting
+    // Logic: Filtering
     const filteredResults = useMemo(() => {
         return assetValues.filter((row) => {
             const name = (row?.index_name || '').toLowerCase();
             const isInternal = name.startsWith('_');
             const matchesSearch = name.includes(searchTerm.toLowerCase());
+            
             const matchesStatus = activeFilters.activeOnly === 'all' || 
                 (activeFilters.activeOnly === 'active' ? row.index_active : !row.index_active);
+            
             const matchesInternal = activeFilters.showInternal === 'all' || 
                 (activeFilters.showInternal === 'only' ? isInternal : !isInternal);
 
@@ -151,18 +153,36 @@ const SplunkDataCatalogueHomePage = () => {
         });
     }, [assetValues, searchTerm, activeFilters]);
 
+    // Logic: Sorting
     const sortedResults = useMemo(() => {
         const copy = [...filteredResults];
-        copy.sort((a, b) => String(a[sortType]).localeCompare(String(b[sortType]), undefined, { numeric: true }));
+        copy.sort((a, b) => {
+            const valA = a[sortType] || '';
+            const valB = b[sortType] || '';
+            return String(valA).localeCompare(String(valB), undefined, { numeric: true, sensitivity: 'base' });
+        });
         return copy;
     }, [filteredResults, sortType]);
 
-    const currentPageResults = useMemo(() => {
-        const start = (currentPage - 1) * postsPerPage;
-        return sortedResults.slice(start, start + postsPerPage);
-    }, [sortedResults, currentPage, postsPerPage]);
+    // --- Pagination Math (The SafeCurrentPage Fix) ---
+    const totalPages = useMemo(() => 
+        Math.max(1, Math.ceil(sortedResults.length / postsPerPage)), 
+    [sortedResults, postsPerPage]);
 
-    // Menu Helper
+    const safeCurrentPage = useMemo(() => 
+        Math.min(currentPage, totalPages), 
+    [currentPage, totalPages]);
+
+    const currentPageResults = useMemo(() => {
+        const start = (safeCurrentPage - 1) * postsPerPage;
+        return sortedResults.slice(start, start + postsPerPage);
+    }, [sortedResults, safeCurrentPage, postsPerPage]);
+
+    // Reset to page 1 when search/filters change
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchTerm, activeFilters, postsPerPage]);
+
     const renderEllipsisMenu = (asset) => (
         <Dropdown toggle={<Button appearance="toggle" label="⋯" isMenu />}>
             <Menu>
@@ -178,7 +198,7 @@ const SplunkDataCatalogueHomePage = () => {
         <SplunkThemeProvider family="prisma" colorScheme="dark" density="comfortable">
             <PageContainer>
                 <header style={{ textAlign: 'center', marginBottom: '40px' }}>
-                    <Heading level={1}>Data Catalogue</Heading>
+                    <Heading level={1} style={{ fontSize: '36px', fontWeight: 800 }}>Data Catalogue</Heading>
                     <div style={{ maxWidth: '600px', margin: '20px auto' }}>
                         <ModernSearchBar value={searchTerm} onChange={setSearchTerm} placeholder="Search indexes..." />
                     </div>
@@ -187,7 +207,7 @@ const SplunkDataCatalogueHomePage = () => {
                 <MainLayout>
                     <Sidebar>
                         <FilterSection>
-                            <Heading level={4} style={{ color: variables.textColorMuted, marginBottom: 12 }}>Sort By</Heading>
+                            <Heading level={4} style={{ color: variables.textColorMuted, marginBottom: 12 }}>Sort Records</Heading>
                             <Select value={sortType} onChange={(_, { value }) => setSortType(value)} style={{ width: '100%' }}>
                                 {SortByOptions.map(opt => <Select.Option key={opt.value} label={opt.label} value={opt.value} />)}
                             </Select>
@@ -196,8 +216,9 @@ const SplunkDataCatalogueHomePage = () => {
                         <FilterSection>
                             <Heading level={4} style={{ color: variables.textColorMuted, marginBottom: 12 }}>Internal Indexes</Heading>
                             <RadioList value={activeFilters.showInternal} onChange={(_, { value }) => setActiveFilters(p => ({ ...p, showInternal: value }))}>
-                                <RadioList.Option value="exclude">Hide Internal</RadioList.Option>
+                                <RadioList.Option value="exclude">Hide Internal (_)</RadioList.Option>
                                 <RadioList.Option value="all">Show All</RadioList.Option>
+                                <RadioList.Option value="only">Only Internal</RadioList.Option>
                             </RadioList>
                         </FilterSection>
 
@@ -205,59 +226,49 @@ const SplunkDataCatalogueHomePage = () => {
                             <Heading level={4} style={{ color: variables.textColorMuted, marginBottom: 12 }}>Results Per Page</Heading>
                             <div style={{ display: 'flex', gap: '4px' }}>
                                 {[10, 20, 50].map(size => (
-                                    <Button key={size} appearance={postsPerPage === size ? 'primary' : 'secondary'} label={String(size)} onClick={() => setPostsPerPage(size)} style={{ flex: 1 }} />
+                                    <Button 
+                                        key={size} 
+                                        appearance={postsPerPage === size ? 'primary' : 'secondary'} 
+                                        label={String(size)} 
+                                        onClick={() => setPostsPerPage(size)} 
+                                        style={{ flex: 1 }} 
+                                    />
                                 ))}
                             </div>
                         </FilterSection>
+
+                        <Button 
+                            appearance="pill" 
+                            label="Reset All Filters" 
+                            onClick={() => {
+                                setActiveFilters({ activeOnly: 'all', type: 'all', showInternal: 'exclude' });
+                                setSearchTerm('');
+                                setSortType('index_name');
+                            }} 
+                            style={{ width: '100%', marginTop: '20px' }} 
+                        />
                     </Sidebar>
 
                     <main style={{ flex: 1 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
-                            <Text bold size="large">{filteredResults.length} Results</Text>
-                            <Button appearance="primary" icon={<Plus />} label="Add Index" />
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', alignItems: 'center' }}>
+                            <Text bold size="large" style={{ fontSize: '18px' }}>
+                                {filteredResults.length} Results Found
+                            </Text>
+                            <div style={{ display: 'flex', gap: '10px' }}>
+                                <HomeHelpMenuReact />
+                                <Button appearance="primary" icon={<Plus />} label="Add Index" />
+                            </div>
                         </div>
 
-                        <CardLayout cardWidth={320} gutterSize={20}>
+                        <CardLayout cardWidth={320} gutterSize={24}>
                             {currentPageResults.map((asset) => {
                                 const isMetrics = asset.index_type?.toLowerCase() === 'metrics';
                                 const TypeIcon = isMetrics ? Metrics : Event;
                                 return (
                                     <StyledCard key={asset._key}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-                                            <div>
-                                                <Heading level={3} style={{ margin: 0 }}>{asset.index_name}</Heading>
-                                                <Text color="muted">{asset.source_itam_bsa || 'System'}</Text>
-                                            </div>
-                                            <div style={{ display: 'flex', gap: 8 }}>
-                                                <TypeIconBox isMetrics={isMetrics}><TypeIcon size={1.2} /></TypeIconBox>
-                                                {renderEllipsisMenu(asset)}
-                                            </div>
-                                        </div>
-
-                                        <BentoGrid>
-                                            <StatItem><span className="label">Size</span><span className="value">{asset.index_size_mb}MB</span></StatItem>
-                                            <StatItem><span className="label">Usage</span><span className="value">{asset.avg_index_usage_mb}MB</span></StatItem>
-                                            <StatItem><span className="label">Days</span><span className="value">{asset.index_retention_period}d</span></StatItem>
-                                        </BentoGrid>
-
-                                        <Text style={{ minHeight: 54, opacity: 0.8 }}>{asset.index_description || "No description."}</Text>
-                                        <Button appearance="secondary" label="View Details" style={{ width: '100%', marginTop: 20, borderRadius: 10 }} />
-                                    </StyledCard>
-                                );
-                            })}
-                        </CardLayout>
-
-                        <div style={{ marginTop: 40, display: 'flex', justifyContent: 'center' }}>
-                            <Paginator current={safeCurrentPage} totalPages={totalPages} onChange={(_, { page }) => setCurrentPage(page)} />
-                        </div>
-                    </main>
-                </MainLayout>
-            </PageContainer>
-
-            <HomePageHistoryModalPanelReact ref={childRef} />
-            <HomeIndexDetailsModalPanelReact ref={childRef1} />
-        </SplunkThemeProvider>
-    );
-};
-
-export default SplunkDataCatalogueHomePage;
+                                            <div style={{ maxWidth: '70%' }}>
+                                                <Heading level={3} style={{ margin: 0, fontSize: '18px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                    {asset.index_name}
+                                                </Heading>
+                                                <Text color="muted
