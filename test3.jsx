@@ -1,27 +1,34 @@
-const IndexTypeIndicator = ({ type }) => {
-    const isMetrics = type?.toLowerCase() === 'metrics';
+{currentPageResults.map((asset) => {
+    const isMetrics = (asset?.index_type || '').toLowerCase() === 'metrics';
     
-    // Modern colors: Electric Purple for Metrics, Teal/Green for Events
-    const iconColor = isMetrics ? '#B66DFF' : '#00D1AF';
-    const IconComponent = isMetrics ? Metrics : Event;
+    // Define modern Splunk-themed colors
+    const typeColor = isMetrics ? '#B66DFF' : '#00D1AF'; // Purple for Metrics, Teal for Events
+    const TypeIcon = isMetrics ? Metrics : Event;
 
     return (
-        <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: '32px',
-            height: '32px',
-            borderRadius: '10px',
-            background: `${iconColor}22`, // 22 is ~13% opacity for a soft glow
-            border: `1px solid ${iconColor}44`,
-            color: iconColor,
-            marginBottom: '12px'
-        }}>
-            <IconComponent size={1.2} />
+        <div key={asset._key} style={modernCardStyle}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    {/* The Splunk React Icon */}
+                    <TypeIcon size={1.5} style={{ color: typeColor }} /> 
+                    
+                    <div>
+                        <div style={{ fontSize: '18px', fontWeight: 700, color: '#fff' }}>
+                            {asset.index_name}
+                        </div>
+                        <div style={{ fontSize: '10px', color: typeColor, fontWeight: 600, letterSpacing: '0.5px' }}>
+                            {isMetrics ? 'METRICS INDEX' : 'EVENT INDEX'}
+                        </div>
+                    </div>
+                </div>
+                {renderEllipsisMenu(asset, asset.index_name)}
+            </div>
+
+            {/* Rest of your card content (Pills, Description, Bento Box) */}
+            ...
         </div>
     );
-};
+})}
 
 
 {currentPageResults.map((asset) => (
