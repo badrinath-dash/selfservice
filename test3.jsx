@@ -1,29 +1,3 @@
-const IndexTypeIndicator = ({ type }) => {
-    const isMetrics = type?.toLowerCase() === 'metrics';
-    const iconColor = isMetrics ? '#996dffff' : '#00d100ff';
-    const IconComponent = isMetrics ? Metrics : Event;
-
-    return (
-        <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: '32px',
-            height: '32px',
-            borderRadius: '10px',
-            background: `${iconColor}22`,
-            border: `1px solid ${iconColor}44`,
-            color: iconColor,
-            flexShrink: 0 // Prevents icon from squishing
-        }}>
-            <IconComponent size={1.2} />
-        </div>
-    );
-};
-
-
-
-
 {/* --- MAIN CONTENT AREA --- */}
 <main style={{ flex: 1 }}>
     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
@@ -36,14 +10,23 @@ const IndexTypeIndicator = ({ type }) => {
         </div>
     </div>
 
-    {/* UPDATED: Increased gutterSize to 24 and adjusted cardWidth slightly if needed */}
-    <CardLayout cardWidth={340} gutterSize={24} cardMaxWidth={340} alignCards={'left'}>
+    {/* REPLACEMENT: CSS Grid instead of CardLayout for perfect gutters and sizing */}
+    <div style={{
+        display: 'grid',
+        // This creates columns that are at least 300px wide, but fill the space. 
+        // Adjust '300px' if you want wider/narrower cards.
+        gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', 
+        gap: '24px', // This is your controlled Gutter size
+        alignItems: 'stretch' // Ensures all cards in a row are the same height
+    }}>
         {currentPageResults.map((asset) => (
             <div key={asset._key}
                 style={{
                     ...modernCardStyle,
-                    height: '100%', // Ensures card takes full height of the row
-                    boxSizing: 'border-box' // Prevents padding from adding to width
+                    height: 'auto', // Let flex handle height
+                    display: 'flex',
+                    flexDirection: 'column',
+                    maxWidth: '100%', // Prevent escaping grid cell
                 }}
                 onMouseEnter={(e) => {
                     e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.07)';
@@ -58,31 +41,40 @@ const IndexTypeIndicator = ({ type }) => {
                 <div style={{ 
                     display: 'flex', 
                     justifyContent: 'space-between', 
-                    alignItems: 'center', // Vertically center icon and text
+                    alignItems: 'flex-start',
                     marginBottom: '16px',
-                    gap: '12px' 
+                    gap: '12px',
+                    minWidth: 0 // Crucial for flex child truncation
                 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
-                        <IndexTypeIndicator type={asset.index_type} />
+                    <div style={{ display: 'flex', gap: '12px', minWidth: 0, flex: 1 }}>
+                        {/* Icon - Fixed width so it doesn't shrink */}
+                        <div style={{ flexShrink: 0 }}>
+                             <IndexTypeIndicator type={asset.index_type} />
+                        </div>
+                        
+                        {/* Title - Forces truncation if too long */}
                         <div style={{ 
                             fontSize: '18px', 
                             fontWeight: 700, 
                             color: '#fff',
-                            whiteSpace: 'nowrap',
                             overflow: 'hidden',
-                            textOverflow: 'ellipsis' 
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            minWidth: 0
                         }} title={asset.index_name}>
                             {asset.index_name}
                         </div>
                     </div>
                     
+                    {/* Menu - Pushed to right */}
                     <div style={{ flexShrink: 0 }}>
                         {renderEllipsisMenu(asset, asset.index_name)}
                     </div>
                 </div>
 
                 {/* 2. Content Body */}
-                <div style={{ flex: 1 }}>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                    
                     {/* Metadata Pills */}
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '20px' }}>
                         <Chip appearance={asset.index_active ? 'success' : 'neutral'}>
@@ -114,14 +106,22 @@ const IndexTypeIndicator = ({ type }) => {
                         </div>
                     </div>
 
-                    {/* Description: Added word-break and consistent height */}
+                    {/* Description: Strict Containment */}
                     <div style={{ 
                         ...bodyTextStyle, 
-                        ...clamp3, 
-                        minHeight: '60px', // Ensures vertical alignment
-                        opacity: 0.8,
-                        wordBreak: 'break-word', // CRITICAL: prevents card expansion on long words
-                        marginBottom: '20px'
+                        marginBottom: '20px',
+                        flex: 1, // Pushes footer down
+                        
+                        // THESE LINES FIX THE CARD WIDTH ISSUE:
+                        overflowWrap: 'anywhere', // Force breaks even in middle of long strings
+                        wordBreak: 'break-word',  // Fallback
+                        hyphens: 'auto',
+                        
+                        // Line clamping
+                        display: '-webkit-box',
+                        WebkitLineClamp: 3,
+                        WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden',
                     }}>
                         {asset.index_description || "No description provided for this data asset."}
                     </div>
@@ -138,7 +138,7 @@ const IndexTypeIndicator = ({ type }) => {
                 </div>
             </div>
         ))}
-    </CardLayout>
+    </div>
 
     <div style={{ marginTop: '40px', display: 'flex', justifyContent: 'center' }}>
         <Paginator
