@@ -1,83 +1,114 @@
+import React, { useState, useRef } from 'react';
 import Popover from '@splunk/react-ui/Popover'; 
+import Button from '@splunk/react-ui/Button'; 
+import Close from '@splunk/react-icons/enterprise/Close';
 
-// --- UPDATED POPOVER COMPONENT ---
 const DescriptionPopover = ({ text }) => {
-    // 1. Create a state to track open/closed
     const [open, setOpen] = useState(false);
-    
-    // 2. Create a ref for the anchor element (the clickable text)
     const anchorRef = useRef(null);
 
+    // 1. Safety check
     if (!text) return <span style={{ opacity: 0.5, fontStyle: 'italic', fontSize: '13px' }}>No description provided.</span>;
 
-    const toggleStyle = {
+    // 2. Styles for the clickable "Link" in the card
+    const linkStyle = {
+        cursor: 'pointer',
+        color: '#65a637', // Splunk Green for visibility
+        fontSize: '13px',
+        fontWeight: '600',
+        textDecoration: 'underline',
+        display: 'inline-block',
+        marginTop: '4px'
+    };
+
+    // 3. Styles for the TRUNCATED text preview
+    const truncatedTextStyle = {
         display: '-webkit-box',
         WebkitLineClamp: 3,
         WebkitBoxOrient: 'vertical',
         overflow: 'hidden',
         overflowWrap: 'anywhere',
         wordBreak: 'break-word',
-        cursor: 'pointer',
-        borderBottom: '1px dotted rgba(255,255,255,0.5)',
-        paddingBottom: '2px',
-        fontSize: '13px',
-        color: '#DDE3EA'
+        marginBottom: '4px',
+        opacity: 0.9
     };
 
     return (
-        <>
-            {/* The Trigger (Truncated Text) */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+            
+            {/* The Truncated Text Preview */}
+            <div style={truncatedTextStyle} title={text}>
+                {text}
+            </div>
+
+            {/* The Trigger Link */}
             <div 
                 ref={anchorRef} 
                 onClick={(e) => {
                     e.stopPropagation(); 
                     setOpen(!open);
                 }}
-                style={toggleStyle}
-                title="Click to view full description"
+                style={linkStyle}
             >
-                {text}
+                {open ? 'Close' : 'Show Full Description'}
             </div>
 
-            {/* The Popover (Floating above everything) */}
+            {/* The Robust Popover */}
             {open && (
-               <Popover
-                   open={open}
-                   anchor={anchorRef.current}
-                   onRequestClose={() => setOpen(false)}
-                   appearance="light"
-                   autoFocus={false}
-                   
-                   // --- CRITICAL FIXES ---
-                   // 1. Mounts the popover to the body, escaping the card's stacking context
-                   mountNode={document.body}  
-                   
-                   // 2. Ensures standard positioning behavior
-                   position="below" 
-                   
-                   // 3. Optional: Adds a subtle shadow for better readability
-                   style={{ 
-                       zIndex: 9999, 
-                       boxShadow: '0 8px 24px rgba(0,0,0,0.2)' 
-                   }}
-               >
-                   <div style={{ 
-                       padding: '16px', 
-                       maxWidth: '300px', 
-                       maxHeight: '400px', 
-                       overflowY: 'auto',
-                       fontSize: '14px',
-                       lineHeight: '1.5',
-                       color: '#3C444D', 
-                       whiteSpace: 'pre-wrap'
-                   }}>
-                       <div style={{ fontWeight: 'bold', marginBottom: '8px', borderBottom: '1px solid #eee', paddingBottom: '4px' }}>
-                           Full Description
-                       </div>
-                       {text}
-                   </div>
-               </Popover>
+                <Popover
+                    open={open}
+                    anchor={anchorRef.current}
+                    onRequestClose={() => setOpen(false)}
+                    // We manually style, so appearance is less critical, but 'light' is safe
+                    appearance="light" 
+                    mountNode={document.body}  
+                    position="right" // Tries to put it to the right, falls back to best fit
+                    style={{ zIndex: 99999 }} // Ensures it sits on top of everything
+                >
+                    {/* INNER CONTENT: High Contrast Styles */}
+                    <div style={{ 
+                        backgroundColor: '#ffffff',  // Force White Background
+                        color: '#333333',            // Force Dark Text
+                        width: '320px',              // Fixed width for readability
+                        padding: '20px',
+                        borderRadius: '8px',
+                        boxShadow: '0 12px 40px rgba(0,0,0,0.5)', // Deep shadow to separate from background
+                        border: '1px solid #ccc',
+                        position: 'relative'
+                    }}>
+                        {/* Header */}
+                        <div style={{ 
+                            display: 'flex', 
+                            justifyContent: 'space-between', 
+                            alignItems: 'center',
+                            marginBottom: '12px',
+                            borderBottom: '1px solid #eee',
+                            paddingBottom: '8px'
+                        }}>
+                            <span style={{ fontWeight: 'bold', fontSize: '14px', textTransform: 'uppercase', color: '#000' }}>
+                                Full Description
+                            </span>
+                            <Button 
+                                appearance="flat" 
+                                icon={<Close />} 
+                                onClick={() => setOpen(false)} 
+                                style={{ minWidth: 'auto', padding: '4px' }}
+                            />
+                        </div>
+
+                        {/* Scrollable Text Body */}
+                        <div style={{ 
+                            maxHeight: '300px', 
+                            overflowY: 'auto', 
+                            whiteSpace: 'pre-wrap', // Preserves paragraphs/formatting
+                            fontSize: '14px',
+                            lineHeight: '1.6'
+                        }}>
+                            {text}
+                        </div>
+                    </div>
+                </Popover>
             )}
-        </>
+        </div>
     );
 };
