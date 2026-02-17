@@ -1,3 +1,29 @@
+const IndexTypeIndicator = ({ type }) => {
+    const isMetrics = type?.toLowerCase() === 'metrics';
+    const iconColor = isMetrics ? '#996dffff' : '#00d100ff';
+    const IconComponent = isMetrics ? Metrics : Event;
+
+    return (
+        <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '32px',
+            height: '32px',
+            borderRadius: '10px',
+            background: `${iconColor}22`,
+            border: `1px solid ${iconColor}44`,
+            color: iconColor,
+            flexShrink: 0 // Prevents icon from squishing
+        }}>
+            <IconComponent size={1.2} />
+        </div>
+    );
+};
+
+
+
+
 {/* --- MAIN CONTENT AREA --- */}
 <main style={{ flex: 1 }}>
     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
