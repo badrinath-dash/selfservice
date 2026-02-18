@@ -1,28 +1,41 @@
-import React, { useState, useRef } from 'react';
-import Popover from '@splunk/react-ui/Popover'; 
-import Button from '@splunk/react-ui/Button'; 
+import React, { useState, useRef, useLayoutEffect } from 'react';
+import Popover from '@splunk/react-ui/Popover';
+import Button from '@splunk/react-ui/Button';
 import Close from '@splunk/react-icons/enterprise/Close';
 
 const DescriptionPopover = ({ text }) => {
     const [open, setOpen] = useState(false);
+    const [isTruncated, setIsTruncated] = useState(false);
+    const textRef = useRef(null);
     const anchorRef = useRef(null);
 
     // 1. Safety check
     if (!text) return <span style={{ opacity: 0.5, fontStyle: 'italic', fontSize: '13px' }}>No description provided.</span>;
 
-    // 2. Styles for the clickable "Link" in the card
+    // 2. Measure the text on render to see if it overflows
+    useLayoutEffect(() => {
+        const element = textRef.current;
+        if (element) {
+            // If the content (scrollHeight) is taller than the visible box (clientHeight), it's truncated.
+            // We verify scrollHeight > clientHeight OR if the text is simply very long (fallback)
+            const truncated = element.scrollHeight > element.clientHeight || element.scrollHeight > 60; 
+            setIsTruncated(truncated);
+        }
+    }, [text]);
+
+    // 3. Styles
     const linkStyle = {
         cursor: 'pointer',
-        color: '#65a637', // Splunk Green for visibility
-        fontSize: '13px',
+        color: '#65a637', // Splunk Green
+        fontSize: '12px',
         fontWeight: '600',
-        textDecoration: 'underline',
-        display: 'inline-block',
-        marginTop: '4px'
+        textDecoration: 'none',
+        marginTop: '4px',
+        display: 'inline-flex',
+        alignItems: 'center'
     };
 
-    // 3. Styles for the TRUNCATED text preview
-    const truncatedTextStyle = {
+    const textStyle = {
         display: '-webkit-box',
         WebkitLineClamp: 3,
         WebkitBoxOrient: 'vertical',
@@ -30,53 +43,56 @@ const DescriptionPopover = ({ text }) => {
         overflowWrap: 'anywhere',
         wordBreak: 'break-word',
         marginBottom: '4px',
-        opacity: 0.9
+        opacity: 0.9,
+        fontSize: '13px',
+        lineHeight: '1.5', // Important for calculation
+        maxHeight: '4.5em' // 1.5 lineHeight * 3 lines = 4.5em max height
     };
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
             
-            {/* The Truncated Text Preview */}
-            <div style={truncatedTextStyle} title={text}>
+            {/* The Text Preview */}
+            <div ref={textRef} style={textStyle} title={isTruncated ? text : ''}>
                 {text}
             </div>
 
-            {/* The Trigger Link */}
-            <div 
-                ref={anchorRef} 
-                onClick={(e) => {
-                    e.stopPropagation(); 
-                    setOpen(!open);
-                }}
-                style={linkStyle}
-            >
-                {open ? 'Close' : 'Show Full Description'}
-            </div>
+            {/* CONDITIONAL RENDER: Only show this link if text is actually truncated */}
+            {isTruncated && (
+                <div 
+                    ref={anchorRef} 
+                    onClick={(e) => {
+                        e.stopPropagation(); 
+                        setOpen(!open);
+                    }}
+                    style={linkStyle}
+                    role="button"
+                >
+                    {open ? 'Close' : 'Show Full Description ›'}
+                </div>
+            )}
 
-            {/* The Robust Popover */}
+            {/* The Popover Logic (Identical to before) */}
             {open && (
                 <Popover
                     open={open}
                     anchor={anchorRef.current}
                     onRequestClose={() => setOpen(false)}
-                    // We manually style, so appearance is less critical, but 'light' is safe
-                    appearance="light" 
+                    appearance="light"
                     mountNode={document.body}  
-                    position="right" // Tries to put it to the right, falls back to best fit
-                    style={{ zIndex: 99999 }} // Ensures it sits on top of everything
+                    position="right"
+                    style={{ zIndex: 99999 }}
                 >
-                    {/* INNER CONTENT: High Contrast Styles */}
                     <div style={{ 
-                        backgroundColor: '#ffffff',  // Force White Background
-                        color: '#333333',            // Force Dark Text
-                        width: '320px',              // Fixed width for readability
+                        backgroundColor: '#ffffff',
+                        color: '#333333',
+                        width: '320px',
                         padding: '20px',
                         borderRadius: '8px',
-                        boxShadow: '0 12px 40px rgba(0,0,0,0.5)', // Deep shadow to separate from background
+                        boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
                         border: '1px solid #ccc',
                         position: 'relative'
                     }}>
-                        {/* Header */}
                         <div style={{ 
                             display: 'flex', 
                             justifyContent: 'space-between', 
@@ -95,12 +111,10 @@ const DescriptionPopover = ({ text }) => {
                                 style={{ minWidth: 'auto', padding: '4px' }}
                             />
                         </div>
-
-                        {/* Scrollable Text Body */}
                         <div style={{ 
                             maxHeight: '300px', 
                             overflowY: 'auto', 
-                            whiteSpace: 'pre-wrap', // Preserves paragraphs/formatting
+                            whiteSpace: 'pre-wrap',
                             fontSize: '14px',
                             lineHeight: '1.6'
                         }}>
