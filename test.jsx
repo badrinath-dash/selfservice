@@ -1,122 +1,217 @@
-import React, { useState } from 'react';
-import {
-  Box,
-  Button,
-  Stepper,
-  Step,
-  StepLabel,
-  CssBaseline,
-  Typography
-} from '@mui/material';
-import Step1YourInfo from '../components/ApiAccessPage/TermsAndConditionForm';
-import ApplicationDetailsForm from '../components/ApiAccessPage/ApplicationDetailsForm';
-import DataClassificationForm from '../components/ApiAccessPage/DataClassificationForm';
-import SplunkDetailsForm from '../components/ApiAccessPage/SplunkDetailsForm';
-import ChevronLeftRoundedIcon from "@mui/icons-material/ChevronLeftRounded";
-import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
-import ColumnLayout from '@splunk/react-ui/ColumnLayout';
-import TelstraIcon from '../components/ApiAccessPage/CustomLogo';
+import React, { useState, useRef, forwardRef, useImperativeHandle } from 'react';
+import Modal from '@splunk/react-ui/Modal';
+import { Timeline, TimelineEvent } from 'react-event-timeline';
+import Card from '@splunk/react-ui/Card';
+import ControlGroup from '@splunk/react-ui/ControlGroup';
+import Calendar from '@splunk/react-icons/Calendar';
+import P from '@splunk/react-ui/Paragraph';
+import Plus from '@splunk/react-icons/Plus';
+import Button from '@splunk/react-ui/Button';
+import Text from '@splunk/react-ui/Text';
+import Message from '@splunk/react-ui/Message';
+import moment from 'moment';
 
-const steps = ['Application Details', 'Data Classification', 'Splunk Details', 'Terms & Conditions'];
+import { searchKVStore, insertKVStore } from '../../common/ManageKVStore';
 
-function getStepContent(step) {
-  switch (step) {
-    case 0:
-      return <ApplicationDetailsForm />;
-    case 1:
-      return <DataClassificationForm />;
-    case 2:
-      return <SplunkDetailsForm />;
-    case 3:
-      return <Step1YourInfo />;
-    default:
-      return <div>Unknown step</div>;
-  }
-}
+export const HomePageHistoryModalPanelReact = forwardRef((props, _ref) => {
+    const [modalHistoryOpen, setmodalHistoryOpen] = useState(false);
+    const modalToggle1 = useRef(null);
+    const [historyData, setHistoryData] = useState([]);
+    const [indexNameModal, setIndexNameModal] = useState();
+    const [timeLineColor,setTimeLineColor]=useState();
+    const [comment, setComment] = useState('');
+    const [infoMessage, setInfoMessage] = useState([]);
+    const [currentUser, setCurrentUser] = useState();
 
-// Placeholder for the color dropdown
-const ColorModeIconDropdown = () => <Box>Color Mode</Box>;
 
-// Placeholder for Info component
-const Info = ({ totalPrice }) => (
-  <Box>
-    <Typography variant="body1">Total Price: {totalPrice}</Typography>
-  </Box>
-);
+    const handleHistoryModalRequestClose = () => {
+        setmodalHistoryOpen(false);
+        modalToggle1?.current?.focus(); // Return focus to the invoking element on close
+    };
 
-export default function SplunkRestAPIAccess() {
-  const [activeStep, setActiveStep] = useState(0);
+    const handleMessageRemove = () => {
+        setInfoMessage({ visible: false });
+    };
 
-  const handleNext = () => {
-    if (activeStep < steps.length - 1) setActiveStep((prev) => prev + 1);
-  };
 
-  const handleBack = () => {
-    if (activeStep > 0) setActiveStep((prev) => prev - 1);
-  };
+ /// Pull history information from KvStore
+    function getHistoryData(indexName) {
+        // event.preventDefault();
+        const defaultErrorMsg = 'Error updating row. Please try again.';
+        if (Object.keys(indexName).length !== 0) {
+            searchKVStore(
+                'splunk_data_catalog_history',
+                '',
+                // eslint-disable-next-line camelcase
+                `{"index_name":"${indexName}"}`,
+                defaultErrorMsg
+            ).then((response) => {
+                if (response.ok) {
+                    response.json().then((data) => {
+                        setHistoryData(data);
+                        // Replace with a Spinner
+                        // setInfoMessage({
+                        //     visible: true,
+                        //     type: 'success',
+                        //     message: 'Successfully retrieved history from SPLUNK KVStore',
+                        // });
+                        // setTimeout(() => {
+                        //     setInfoMessage({
+                        //         visible: false,
+                        //     });
+                        // }, 1000);
+                    });
+                }
+            });
+        }
 
-  return (
-    <>
-      <CssBaseline />
-      <Box sx={{ position: 'fixed', top: '1rem', right: '1rem' }}>
-        <ColorModeIconDropdown />
-      </Box>
+    }
 
-      <ColumnLayout gutter="wide">
-        <ColumnLayout.Row>
-          <ColumnLayout.Column>
-            {/* Sidebar / Info Section */}
-            <Box
-              sx={{
-                display: 'flex',
-                flexDirection: 'column',
-                backgroundColor: 'background.paper',
-                borderRight: '1px solid',
-                borderColor: 'divider',
-                alignItems: 'start',
-                pt: 8,
-                px: 4,
-                gap: 2
-              }}
-            >
-              {/* <TelstraIcon /> */}
-              <Info totalPrice={activeStep >= 2 ? "$144.97" : "$134.98"} />
-            </Box>
-          </ColumnLayout.Column>
+    useImperativeHandle(_ref, () => ({
+        handleModalHistoryRequestOpen(key, indexName, currentUser, currentEmail,colorScheme) {
+            setmodalHistoryOpen(true);
+            setIndexNameModal(indexName);
+            setCurrentUser(currentUser);
+            getHistoryData(indexName);
+            setTimeLineColor(colorScheme);
+            if (colorScheme === 'dark') {
+                setTimeLineColor('#3c444d');
+            }
+            else{
+                setTimeLineColor('#f4f4f4');
+            }
+        },
+    }));
 
-          <ColumnLayout.Column>
-            {/* Main Form Section */}
-            <Box sx={{ px: 4, py: 6 }}>
-              <Stepper activeStep={activeStep} alternativeLabel>
-                {steps.map((label) => (
-                  <Step key={label}>
-                    <StepLabel>{label}</StepLabel>
-                  </Step>
-                ))}
-              </Stepper>
 
-              <Box sx={{ mt: 4 }}>{getStepContent(activeStep)}</Box>
 
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 4 }}>
-                <Button
-                  disabled={activeStep === 0}
-                  onClick={handleBack}
-                  startIcon={<ChevronLeftRoundedIcon />}
-                >
-                  Back
-                </Button>
-                <Button
-                  variant="contained"
-                  onClick={handleNext}
-                  endIcon={<ChevronRightRoundedIcon />}
-                >
-                  {activeStep === steps.length - 1 ? 'Submit' : 'Next'}
-                </Button>
-              </Box>
-            </Box>
-          </ColumnLayout.Column>
-        </ColumnLayout.Row>
-      </ColumnLayout>
-    </>
-  );
-}
+    function dateComparison(a, b) {
+        const date1 = new Date(a.date)
+        const date2 = new Date(b.date)
+
+        return date2 - date1;
+    }
+
+    const sortedResults = historyData.sort(dateComparison)
+
+
+    const HistoryDataTimeline = sortedResults
+        // .sort((a, b) => (new Date(a.date) - new Date(b.date) ))
+        .map((historyValue) => (
+                <Timeline style={{ fontSize: '100%'}} key={historyValue._key}>
+                    <TimelineEvent
+                        title={historyValue.username}
+                        titleStyle={{ fontWeight: 'bold' }}
+                        createdAt={historyValue.date}
+                        // style={{ fontSize: '100%' }}
+                        container="card"
+                        icon={<Calendar screenReaderText={null} />}
+                        contentStyle={{ background:timeLineColor }}
+                        bubbleStyle={{ background:timeLineColor }}
+                    >
+                        {historyValue.comment}
+                    </TimelineEvent>
+                </Timeline>
+
+        ));
+
+    function handleNewCommentSubmit() {
+        // event.preventDefault();
+        // Date format needs to be 2022-01-29T14:48:00.000Z
+        const defaultErrorMsg = 'Error updating row. Please try again.';
+        const today = moment().format('YYYY-MM-DDTHH:mm:ss.SSSZ');
+        insertKVStore(
+            'splunk_data_catalog_history',
+            '',
+            {
+                "index_name": indexNameModal,
+                "comment": comment,
+                "username": currentUser,
+                "date": today
+            },
+            defaultErrorMsg
+        )
+            .then((response) => {
+                console.log(response);
+                if (response.ok) {
+                    getHistoryData(indexNameModal);
+                    setComment(" ");
+                    setInfoMessage({
+                        visible: true,
+                        type: 'success',
+                        message: 'New comment added successfully',
+                    });
+                    setTimeout(() => {
+                        setInfoMessage({
+                            visible: false,
+                        });
+                    }, 1000);
+                    // eslint-disable-next-line no-undef
+                } else {
+                    setInfoMessage({
+                        visible: true,
+                        type: 'error',
+                        message:
+                            'There are some error from the Backend Splunk KVStore, Please try again',
+                    });
+                    setTimeout(() => {
+                        setInfoMessage({
+                            visible: false,
+                        });
+                    }, 1000);
+                }
+            })
+            .catch((err) => {
+                setInfoMessage({
+                    visible: true,
+                    type: 'error',
+                    message: err,
+                });
+                setTimeout(() => {
+                    setInfoMessage({
+                        visible: false,
+                    });
+                }, 1000);
+            });
+    }
+
+    return (
+        <>
+            <Modal onRequestClose={handleHistoryModalRequestClose} open={modalHistoryOpen}>
+                <Modal.Header
+                    title={`Change Activity for Index ${indexNameModal}`}
+                    onRequestClose={handleHistoryModalRequestClose}
+                />
+                <Modal.Body>
+                {infoMessage.visible && (
+                        <Message
+                            appearance="fill"
+                            type={infoMessage.type || 'info'}
+                            onRequestRemove={handleMessageRemove}
+                        >
+                            {infoMessage.message}
+                        </Message>
+                    )}
+                    <ControlGroup label="">
+                        <Text
+                            name="comment"
+                            onChange={(event, { value }) => {
+                                setComment(value);
+                            }}
+
+                            placeholder="Add a brief comment"
+                            value={comment}
+                        />
+                        <Button
+                            icon={<Plus screenReaderText={null} />}
+                            label="Add"
+                            appearance="primary"
+                            onClick={() => handleNewCommentSubmit()}
+                        />
+                    </ControlGroup>
+                    {HistoryDataTimeline}
+                </Modal.Body>
+            </Modal>
+        </>
+    );
+});
